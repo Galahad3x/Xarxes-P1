@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <signal.h>
+#include <pthread.h>
 
 int REG_REQ = 0;
 int REG_INFO = 1;
@@ -27,6 +28,10 @@ int WAIT_INFO = 163;
 int WAIT_ACK_INFO = 164;
 int REGISTERED = 165;
 int SEND_ALIVE = 166;
+
+int generate_random(){
+    return 12345678;
+}
 
 struct client{
     int status;

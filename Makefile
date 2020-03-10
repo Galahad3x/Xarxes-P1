@@ -1,3 +1,3 @@
 all:
-	gcc sr.c -ansi -pedantic -Wall -o sr 
+	gcc sr.c -ansi -pedantic -Wall -pthread -o sr 
 	./sr
