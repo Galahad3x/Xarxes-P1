@@ -10,11 +10,14 @@ import threading
 from time import sleep
 from datetime import datetime
 
+
 def cntrlc(signum, handler):
     print("Sortint per CNTRL+C")
     raise SystemExit
 
-signal.signal(signal.SIGINT,cntrlc)
+
+signal.signal(signal.SIGINT, cntrlc)
+
 
 def dt(): return datetime.now().strftime("%d/%m/%Y %H:%M:%S => ")
 
@@ -22,7 +25,9 @@ def dt(): return datetime.now().strftime("%d/%m/%Y %H:%M:%S => ")
 def dt2(): return datetime.now().strftime("%Y-%m-%d;%H:%M:%S")
 
 
-packtypes = {"REG_REQ": 0, "REG_INFO": 1, "REG_ACK": 2, "INFO_ACK": 3, "REG_NACK": 4, "INFO_NACK": 5, "REG_REJ": 6}
+packtypes = {"REG_REQ": 0, "REG_INFO": 1, "REG_ACK": 2, "INFO_ACK": 3, "REG_NACK": 4, "INFO_NACK": 5, "REG_REJ": 6,
+             "SEND_DATA": int("0x20", base=16), "SET_DATA": int("0x21", base=16), "GET_DATA": int("0x22", base=16),
+             "DATA_ACK": int("0x23", base=16), "DATA_NACK": int("0x24", base=16), "DATA_REJ": int("0x25", base=16)}
 
 # ,
 # "DISCONNECTED": int("0xa0", base=16), "NOT_REGISTERED": int("0xa1", base=16),
@@ -81,7 +86,7 @@ should_restart = False
 
 
 def register():
-    global should_send_reg_req,should_child_sleeps_alive
+    global should_send_reg_req, should_child_sleeps_alive
     if debug:
         print(dt() + "Creant un thread per a contar l'enviament de paquets REG_REQ")
     should_child_sleeps_alive = True
@@ -103,7 +108,7 @@ def send_reg_req():
 
 
 def child_sleeps():
-    global should_send_reg_req,should_child_sleeps_alive
+    global should_send_reg_req, should_child_sleeps_alive
     time = 1
     sleep(time)
     for i in range(3):
@@ -170,7 +175,7 @@ def create_reg_info(cl, data):
 
 
 def register_waiting():
-    global attempted_registers, status, num_of_packets, register_socket, should_send_reg_req
+    global attempted_registers, status, num_of_packets, register_socket, should_send_reg_req, should_child_sleeps_alive
     while True:
         rdable, wtable, exceptional = select.select([register_socket], [], [], 0)
         if len(rdable) > 0:
@@ -267,8 +272,10 @@ data, rand = register_waiting()
 # FINAL FASE DE REGISTRE
 should_clock_alive = True
 
+
 def alive_thread_communication():
-    global client,send_alive_packet,sent_alives,status,should_clock_alive
+    global client, send_alive_packet, sent_alives, status, should_clock_alive
+
     def alive():
         return struct.pack("B13s9s61s", int("0x10", base=16), client["Id"].encode(), rand.encode(),
                            "".encode())
@@ -283,8 +290,10 @@ def alive_thread_communication():
         if sent_alives == 3:
             if debug:
                 print(dt() + "El servidor no ha contestat a 3 ALIVE. Reiniciant")
-                os.kill(os.getpid(),signal.SIGUSR1)
-                should_clock_alive = False
+            status = "NOT_REGISTERED"
+            print(dt() + "STATUS = " + str(status))
+            os.kill(os.getpid(), signal.SIGUSR1)
+            should_clock_alive = False
         register_socket.sendto(alive(), (socket.gethostbyname(client["Server"]), int(client["Server-UDP"])))
         send_alive_packet = False
         sent_alives += 1
@@ -297,7 +306,7 @@ def alive_thread_communication():
         if send_alive_packet and should_clock_alive:
             send_alive()
 
-        rdable,wtable,exceptional = select.select([register_socket],[],[],0)
+        rdable, wtable, exceptional = select.select([register_socket], [], [], 0)
         if register_socket in rdable:
             packet_from_server = register_socket.recv(84)
             sent_alives = 0
@@ -307,40 +316,58 @@ def alive_thread_communication():
                 "Random"]:
                 if debug:
                     print(dt() + "Hi ha hagut algun error amb el paquet. Reiniciant")
-                    os.kill(os.getpid(),signal.SIGUSR1)
-                    should_clock_alive = False
+                os.kill(os.getpid(), signal.SIGUSR1)
+                status = "NOT_REGISTERED"
+                print(dt() + "STATUS = " + str(status))
+                should_clock_alive = False
+    if debug:
+        print(dt() + "Thread finalitzat")
+
 
 send_alive_packet = True
+
 
 def clock_signals():
     global send_alive_packet
     while should_clock_alive:
         send_alive_packet = True
         sleep(2)
+    if debug:
+        print(dt() + "Thread finalitzat")
+
 
 def alive_handling():
     if debug:
         print(dt() + "Creant nou thread per mantenir comunicació periòdica amb el servidor")
-    alive_thread = threading.Thread(target=alive_thread_communication,args=[],daemon=True)
+    alive_thread = threading.Thread(target=alive_thread_communication, args=[], daemon=True)
     alive_thread.start()
     if debug:
         print(dt() + "Creant nou thread per a gestionar la comunicació periòdica amb el servidor")
     alive_clock = threading.Thread(target=clock_signals, args=[], daemon=True)
     alive_clock.start()
 
+
 alive_handling()
 
-def hand(signum,handler):
-    global data,rand,should_clock_alive
+
+def hand(signum, handler):
+    global data, rand, should_clock_alive, should_send_reg_req, should_child_sleeps_alive, should_restart
     print(dt() + "Intentant tornar a registrar")
+    should_send_reg_req = True
+    should_child_sleeps_alive = True
+    should_restart = False
+    register()
     data, rand = register_waiting()
     should_clock_alive = True
     alive_handling()
 
-signal.signal(signal.SIGUSR1,hand)
 
-def quit():
+signal.signal(signal.SIGUSR1, hand)
+
+
+def cquit(signum, handler):
     raise SystemExit
+
 
 def stat():
     global status
@@ -354,16 +381,64 @@ def stat():
     print("************************************")
 
 
-def cset(param_name,new_value):
+def cset(param_name, new_value):
     if param_name in client["Params"].keys():
         client["Params"][param_name] = new_value
         print(dt() + "Nou valor de " + param_name + " = " + new_value)
+        return True
     else:
         print(dt() + "ERROR => Aquest parametre no es cap dispositiu")
+        return False
+
+
+def send_data_packet(param):
+    return struct.pack("B13s9s8s16s80s", int("0x20", base=16), client["Id"].encode(), str(rand).encode(),
+                       param.encode(), client["Params"][param].encode(), dt2().encode())
+
+
+def decompose_TCP(packet_recv):
+    global rand
+    tup = struct.unpack("B13s9s8s16s80s", packet_recv)
+    new_info = ""
+    for i in range(12):
+        new_info = new_info.__add__(tup[5].decode(errors="ignore")[i])
+    if tup[0] != packtypes["DATA_ACK"] or tup[2].decode(errors="ignore") != str(rand) or new_info != client["Id"]:
+        print(dt() + "El paquet no ha estat aceptat")
+        if tup[0] == packtypes["DATA_NACK"]:
+            if debug:
+                print(dt() + "S'ha rebut un paquet DATA_NACK")
+        elif tup[0] == packtypes["DATA_REJ"]:
+            if debug:
+                print(dt() + "S'ha rebut un paquet DATA_REJ")
+        else:
+            if debug:
+                print(dt() + "S'ha rebut un paquet no esperat")
+    else:
+        print(dt() + "El paquet ha estat acceptat (s'ha rebut DATA_ACK)")
+
+    decomposed = {"Tipus": tup[0], "Id": tup[1].decode(), "Random": tup[2].decode(),
+                  "Element": tup[3].decode(errors="ignore"), "Valor": tup[4].decode(errors="ignore"),
+                  "Info": new_info}
+    return decomposed
 
 
 def send(param_name):
-    pass
+    global data
+    if param_name not in client["Params"].keys():
+        print(dt() + str(param_name) + " no és cap paràmetre")
+        print(dt() + "No s'ha establert cap connexió")
+    else:
+        send_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_TCP_address = (socket.gethostbyname(client["Server"]), int(data["Dades"]))
+        send_data_socket.connect(server_TCP_address)
+        send_data_socket.send(send_data_packet(param_name), 0)
+        rdable, wtable, exceptional = select.select([send_data_socket], [], [], 3)
+        if send_data_socket not in rdable:
+            print(dt() + "El servidor no ha contestat a l'enviament de dades")
+        else:
+            pack_from_server = send_data_socket.recv(struct.calcsize("B13s9s8s16s80s"), 0)
+            data_from_server = decompose_TCP(pack_from_server)
+
 
 def help():
     print("**********AJUDA COMANDES**********")
@@ -377,15 +452,129 @@ def help():
     print("? \t ? \t\t\tMostra aquesta ajuda")
     print("**********************************")
 
+
+def decompose_server(packet_server):
+    tup = struct.unpack("B13s9s8s16s80s", packet_server)
+    new_info = ""
+    for i in range(12):
+        new_info = new_info.__add__(tup[5].decode(errors="ignore")[i])
+    decomposed = {"Tipus": tup[0], "Id": tup[1].decode(errors="ignore"), "Random": tup[2].decode(errors="ignore"),
+                  "Elem": tup[3].decode(errors="ignore"), "Valor": tup[4].decode(errors="ignore"),
+                  "Info": new_info}
+    return decomposed
+
+
+def create_get_data(element):
+    if element in client["Params"].keys():
+        if debug:
+            print(dt() + "Enviant DATA_ACK")
+        return struct.pack("B13s9s8s16s80s", packtypes["DATA_ACK"], client["Id"].encode(), rand.encode(),
+                           element.encode(),
+                           client["Params"][element].encode(), "".encode())
+    else:
+        if debug:
+            print(dt() + "Enviant DATA_NACK")
+        return struct.pack("B13s9s8s16s80s", packtypes["DATA_NACK"], client["Id"].encode(), rand.encode(),
+                           element.encode(),
+                           "NONE".encode(), (str(element) + " no és un dispositiu del client").encode())
+
+
+def create_set_data_ack(element):
+    print("Data_ack element", element)
+    return struct.pack("B13s9s8s16s80s", packtypes["DATA_ACK"], client["Id"].encode(), rand.encode(), element.encode(),
+                       client["Params"][element].encode(), dt2().encode())
+
+
+def create_set_data_nack(element, type):
+    if type == 0:
+        return struct.pack("B13s9s8s16s80s", packtypes["DATA_NACK"], client["Id"].encode(), rand.encode(),
+                           element.encode(),
+                           "NONE".encode(), "Hi ha hagut un error al fer el set".encode())
+    else:
+        return struct.pack("B13s9s8s16s80s", packtypes["DATA_NACK"], client["Id"].encode(), rand.encode(),
+                           element.encode(),
+                           "NONE".encode(), "L'element és un sensor per tant no es pot configurar".encode())
+
+
+def create_data_rej(element):
+    return struct.pack("B13s9s8s16s80s", packtypes["DATA_REJ"], client["Id"].encode(), rand.encode(), element.encode(),
+                       "NONE".encode(), "Error d'identificació".encode())
+
+
+def waiting_for_server(data_socket):
+    new_socket, addr = data_socket.accept()
+    if debug:
+        print(dt() + "S'ha rebut una connexió del servidor")
+    packet_from_server = new_socket.recv(struct.calcsize("B13s9s8s16s80s"))
+    data_from_server = decompose_server(packet_from_server)
+    if data_from_server["Info"][:12] == client["Id"][:12] and data_from_server["Random"] == str(rand):
+        if data_from_server["Tipus"] == packtypes["GET_DATA"]:
+            new_socket.send(create_get_data(data_from_server["Elem"][:-1]), struct.calcsize("B13s9s8s16s80s"))
+        elif data_from_server["Tipus"] == packtypes["SET_DATA"]:
+            if data_from_server["Elem"][-2] == "I":
+                set_result = cset(data_from_server["Elem"][:-1], data_from_server["Valor"])
+                if set_result:
+                    if debug:
+                        print(dt() + "Enviant DATA_ACK")
+                    new_socket.send(create_set_data_ack(data_from_server["Elem"][:-1]))
+                else:
+                    if debug:
+                        print(dt() + "Enviant DATA_NACK")
+                    new_socket.send(create_set_data_nack(data_from_server["Elem"][:-1], 0))
+            else:
+                if debug:
+                    print(dt() + "Enviant DATA_NACK")
+                new_socket.send(create_set_data_nack(data_from_server["Elem"][:-1], 1))
+        else:
+            if debug:
+                print(dt() + "Rebut paquet no esperat via TCP. No es contestarà")
+            new_socket.close()
+    else:
+        if debug:
+            print(dt() + "Rebut paquet amb identificació incorrecta. Reiniciant")
+        new_socket.send(create_data_rej(data_from_server["Elem"][:-1]))
+        new_socket.close()
+        os.kill(os.getpid(), signal.SIGUSR1)
+
+
+def start_waiting_thread(data_socket):
+    if debug:
+        print(dt() + "Creant thread per a esperar una connexió amb el servidor")
+    receive_data_thread = threading.Thread(target=waiting_for_server, args=[data_socket], daemon=True)
+    receive_data_thread.start()
+    return receive_data_thread
+
+
+def prepare_server_connection():
+    receive_data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        receive_data_socket.bind(("", int(client["Local-TCP"])))
+    except OSError:
+        print(dt() + "No s'ha pogut bindejar el socket TCP")
+        os.kill(os.getpid(), signal.SIGTERM)
+        raise SystemExit
+    receive_data_socket.listen(5)
+    while True:
+        thread = start_waiting_thread(receive_data_socket)
+        thread.join()
+
+
+if debug:
+    print(dt() + "Creant thread per atendre peticions dels servidor")
+server_connection_thread = threading.Thread(target=prepare_server_connection, args=[], daemon=True)
+server_connection_thread.start()
+
+signal.signal(signal.SIGTERM, cquit)
+
 while True:
     command = input("Introdueix una comanda: ")
     try:
         if command.split()[0] == "quit":
-            quit()
+            cquit(0, 0)
         elif command.split()[0] == "stat":
             stat()
         elif command.split()[0] == "set":
-            cset(command.split()[1],command.split()[2])
+            cset(command.split()[1], command.split()[2])
         elif command.split()[0] == "send":
             send(command.split()[1])
         elif command.split()[0] == "?":
