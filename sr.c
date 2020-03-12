@@ -1,10 +1,10 @@
 #include "common.h"
 
 pthread_t register_handler;
-int register_handler_alive = 0;
+volatile int register_handler_alive = 0;
 int allowed_disps_pids[16];
 struct client clients[16];
-int server_UDP_port = 0,server_TCP_port = 0;
+volatile int server_UDP_port = 0,server_TCP_port = 0;
 
 struct PDU_UDP create_udp_packet(unsigned char tipus, char id[], char aleatori[], char dades[]){
     struct PDU_UDP packet;
@@ -88,7 +88,9 @@ void list(){
 void *register_handler_fun(void *argvs){
     struct sockaddr_in serv_addrs,cl_addrs;
     int server_UDP_socket,allowed_disps_counter;
-
+	fd_set selectset;
+	
+    memset(&serv_addrs,0,sizeof(struct sockaddr_in));
 
     serv_addrs.sin_family = AF_INET;
     serv_addrs.sin_port = htons(server_UDP_port);
@@ -96,7 +98,6 @@ void *register_handler_fun(void *argvs){
 
     server_UDP_socket = socket(AF_INET,SOCK_DGRAM,0);
 
-    memset(&serv_addrs,0,sizeof(struct sockaddr_in));
     if(bind(server_UDP_socket,(const struct sockaddr *)&serv_addrs,sizeof(serv_addrs))<0){
         print_debug("ERROR => No s'ha pogut bindejar el socket");
         exit(-1);
@@ -104,32 +105,43 @@ void *register_handler_fun(void *argvs){
     print_debug("Socket bindejat correctament");
 
     int len = sizeof(cl_addrs);
-    int recved;
+    int recved,retl;
     struct PDU_UDP buffer;
     while(register_handler_alive == 1){
-        recvfrom(server_UDP_socket,&buffer,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
-        print_debug("S'ha rebut un paquet");
-        if((recved = is_REG_REQ_correct(buffer)) == 0){
-            print_debug("El paquet REG_REQ es correcte"); /* El client passa a WAIT_ACK_REG*/
-            buffer.id[12] = '\0';
-            int i = 0;
-            setbuf(stdout,NULL);
-            setlinebuf(stdout);
-            fprintf(stdout,"id %s status %i", clients[i].id,clients[i].status);
-            fflush(stdout);
-            for(i = 0;i < 16;i++){
-                if(strcmp(clients[i].id,buffer.id) == 0){
-                    clients[i].status = WAIT_ACK_REG;
-                }
-            }
-            print_debug("Client envia REG_REQ, passa a WAIT_ACK_REG");
-            /*Thread per generar random, nou port UDP i enviar i rebre REG_ACK i INFO*/
-            allowed_disps_counter++;
-        }else{
-            print_debug("Paquet no correcte");
-        }
+		setbuf(stdout,NULL);
+		printf("Bucle");
+		FD_ZERO(&selectset);
+		FD_SET(server_UDP_socket,&selectset);
+		retl = select(server_UDP_socket+1,&selectset,NULL,NULL,0);
+		if(retl){
+			if(FD_ISSET(server_UDP_socket,&selectset)){
+				printf("IF");
+				fflush(stdout);
+				recvfrom(server_UDP_socket,&buffer,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
+				print_debug("S'ha rebut un paquet");
+				if((recved = is_REG_REQ_correct(buffer)) == 0){
+					print_debug("El paquet REG_REQ es correcte"); /* El client passa a WAIT_ACK_REG*/
+					buffer.id[12] = '\0';
+					int i = 0;
+					setbuf(stdout,NULL);
+					printf("id %s status %i\n", clients[i].id,clients[i].status);
+					fflush(stdout);
+					for(i = 0;i < 16;i++){
+						if(strcmp(clients[i].id,buffer.id) == 0){
+							clients[i].status = WAIT_ACK_REG;
+						}
+					}
+					print_debug("Client envia REG_REQ, passa a WAIT_ACK_REG");
+					/*Thread per generar random, nou port UDP i enviar i rebre REG_ACK i INFO*/
+					allowed_disps_counter++;
+				}else{
+					print_debug("Paquet no correcte");
+				}
+			}
+		}
     }
-    return 0;
+    printf("Bucle");
+    return NULL;
 }
 
 int main(int argc,char *argv[]){

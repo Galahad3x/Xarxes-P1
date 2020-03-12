@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <signal.h>
 #include <pthread.h>
 
