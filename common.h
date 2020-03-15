@@ -34,16 +34,17 @@ int generate_random(){
     return 12345678;
 }
 
+int generate_udp_port(){
+    return 3500;
+}
+
 struct client{
     int status;
     char id[13];
-    struct dispositiu* dispositius[16];
+    char dispositius[16][8];
     struct sockaddr_in addr_UDP;
-};
-
-struct dispositiu{
-    char nom[8];
-    char valor[16];
+    int random;
+    int new_udp_port;
 };
 
 struct PDU_UDP{
@@ -51,11 +52,4 @@ struct PDU_UDP{
     char id[13];
     char aleatori[9];
     char dades[61];
-};
-
-struct pipe_info{
-    int pid;
-    char affected_id[13];
-    int new_status;
-    char info[61];
 };
