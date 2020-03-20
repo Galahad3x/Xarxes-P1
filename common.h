@@ -34,8 +34,8 @@ int generate_random(){
     return 12345678;
 }
 
-int generate_udp_port(){
-    return 3500;
+int generate_UDP_port(){
+    return 3501;
 }
 
 struct client{
