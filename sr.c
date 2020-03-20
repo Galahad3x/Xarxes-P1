@@ -68,7 +68,7 @@ void update_client(char affected_id[],int new_status){
 	int i = 0;
 	for(i = 0;i < 16;i++){
 		if(strcmp(clients[i].id,affected_id) == 0){
-			clients[i].status = WAIT_ACK_REG;
+			clients[i].status = new_status;
 		}
 	}
 }
@@ -103,60 +103,7 @@ int get_client_udp_port(char id[]){
 }
 
 void *manage_client_register(void *argvs){
-	fd_set selectset;
-	struct sockaddr_in serv_addrs,cl_addrs;
-	struct PDU_UDP buffer;
-	int new_UDP_socket;
-	int retl,len;
-	struct timeval tv;
-	struct client a = *((struct client *) argvs);
 	
-	len = sizeof(cl_addrs);
-	
-	printf("id %s port %i dades %i\n",(char *) a.id, (int) a.new_udp_port, (int) a.random);
-	
-	memset(&serv_addrs,0,sizeof(struct sockaddr_in));
-
-    serv_addrs.sin_family = AF_INET;
-    serv_addrs.sin_port = htons(a.new_udp_port);
-    serv_addrs.sin_addr.s_addr = INADDR_ANY;
-
-    new_UDP_socket = socket(AF_INET,SOCK_DGRAM,0);
-
-	if(bind(new_UDP_socket,(const struct sockaddr *)&serv_addrs,sizeof(serv_addrs))<0){
-        print_debug("ERROR => No s'ha pogut bindejar el socket");
-        exit(-1);
-    }
-    print_debug("Nou socket bindejat correctament");
-
-	FD_ZERO(&selectset);
-	FD_SET(new_UDP_socket,&selectset);
-	
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
-	retl = select(new_UDP_socket+1,&selectset,NULL,NULL,(struct timeval *) &tv);
-	if(retl){
-		if(FD_ISSET(new_UDP_socket,&selectset)){
-			fflush(stdout);
-			recvfrom(new_UDP_socket,&buffer,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
-			printf("Tipus nou paquet %i tipus reg_info %i\n",buffer.tipus,REG_INFO);
-			/*Rebut paquet REG_INFO, contestar amb el paquet que toqui*/
-			if(buffer.tipus != REG_INFO){
-				print_debug("Tipus de paquet no esperat, no es contestarà");
-				update_client(buffer.id,DISCONNECTED);
-			}else{
-				printf("aleatori %i client %i\n",atoi(buffer.aleatori),a.random);
-				if(atoi(buffer.aleatori) == a.random){
-					printf("Iguals\n");
-				}
-			}
-		}else{
-			char debug_msg[128];
-			sprintf(debug_msg,"El client %s no ha contestat el REG_ACK",a.id);
-			print_debug(debug_msg);
-			update_client(a.id,DISCONNECTED);
-		}
-	}
 	return NULL;
 }
 
@@ -197,21 +144,103 @@ struct client managing_client(char id[]){
 	return clients[0];
 }
 
-void *register_handler_fun(void *argvs){
-    struct sockaddr_in serv_addrs,cl_addrs;
-    int server_UDP_socket;
-    int alive_handlers_counter = 0;
-    struct client *arg;
-    pthread_t alive_handlers[16];
+void *client_manager(void *argvs){
+	struct sockaddr_in serv_new_addrs,cl_addrs;
+	int rand,new_UDP_port,recved,new_UDP_socket,retl;
+	char str_rand[9],str_new_UDP_port[5];
+	struct PDU_UDP buffer,buffer2,REG_ACK_packet,REG_NACK_packet,REG_REJ_packet;
 	fd_set selectset;
-	int rand,new_udp_port;
-	char str_rand[8],str_new_udp_port[4];
+	struct timeval tv;
 	int len = sizeof(cl_addrs);
-    int recved,retl;
-    struct PDU_UDP buffer;
-    struct PDU_UDP REG_ACK_packet;
-    struct PDU_UDP REG_NACK_packet;
-    struct PDU_UDP REG_REJ_packet;
+	int server_UDP_socket = *((int *) argvs);
+	
+	recvfrom(server_UDP_socket,&buffer,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
+	print_debug("S'ha rebut un paquet");
+	
+	if((recved = is_REG_REQ_correct(buffer)) == 0){
+		print_debug("El paquet REG_REQ es correcte"); /* El client passa a WAIT_ACK_REG*/
+		buffer.id[12] = '\0';
+		print_debug("Client envia REG_REQ, passa a WAIT_ACK_REG");
+		update_client(buffer.id,WAIT_ACK_REG);
+		set_client_address(buffer.id,cl_addrs);
+		
+		rand = generate_random();
+		new_UDP_port = generate_UDP_port();
+		set_client_random(buffer.id,rand);
+		set_client_udp_port(buffer.id,new_UDP_port);
+		
+		sprintf((char *) str_rand,"%i",rand);
+		str_rand[8] = '\0';
+		sprintf((char *) str_new_UDP_port,"%i",new_UDP_port);
+		str_new_UDP_port[4] = '\0';
+		
+		REG_ACK_packet = create_udp_packet(REG_ACK,server_id,str_rand,str_new_UDP_port);
+		
+		memset(&serv_new_addrs,0,sizeof(struct sockaddr_in));
+		    
+		serv_new_addrs.sin_family = AF_INET;
+		serv_new_addrs.sin_port = htons(new_UDP_port);
+		serv_new_addrs.sin_addr.s_addr = INADDR_ANY;
+		
+		new_UDP_socket = socket(AF_INET,SOCK_DGRAM,0);
+		
+		if(bind(new_UDP_socket,(const struct sockaddr *)&serv_new_addrs,sizeof(serv_new_addrs))<0){
+			print_debug("ERROR => No s'ha pogut bindejar el socket");
+			exit(-1);
+		}
+		print_debug("Nou socket bindejat correctament");
+		
+		/*Envia REG_ACK*/
+		sendto(server_UDP_socket,(struct PDU_UDP *) &REG_ACK_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
+			
+		FD_ZERO(&selectset);
+		FD_SET(new_UDP_socket,&selectset);
+	
+		tv.tv_sec = 2;
+		tv.tv_usec = 0;
+		retl = select(new_UDP_socket+1,&selectset,NULL,NULL,(struct timeval *) &tv);
+		if(retl){
+			if(FD_ISSET(new_UDP_socket,&selectset)){
+				fflush(stdout);
+				recvfrom(new_UDP_socket,&buffer2,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
+				printf("Tipus nou paquet %i tipus reg_info %i\n",buffer2.tipus,REG_INFO);
+				/*Rebut paquet REG_INFO, contestar amb el paquet que toqui*/
+				if(buffer2.tipus != REG_INFO){
+					print_debug("Tipus de paquet no esperat, no es contestarà");
+					update_client(buffer2.id,DISCONNECTED);
+				}else{
+					printf("buffer %s buffer2 %s\n",buffer.id,buffer2.id);
+					if(rand == atoi(buffer2.aleatori) && strcmp(buffer.id,buffer2.id) == 0){
+						/*Paquet REG_INFO correcte, llegir dades i contestar amb INFO_ACK*/
+					}else{
+						/*Paquet REG_INFO incorrecte, contestar amb INFO_NACK*/
+					}
+				}
+			}
+		}else{
+			char debug_msg[128];
+			sprintf(debug_msg,"El client %s no ha contestat el REG_ACK",buffer.id);
+			print_debug(debug_msg);
+			update_client(buffer.id,DISCONNECTED);
+		}
+	}else if(recved == 1){
+		REG_NACK_packet = create_udp_packet(REG_NACK,server_id,"00000000","Alguna cosa no quadra entre estats o dades");
+		sendto(server_UDP_socket,(struct PDU_UDP *) &REG_NACK_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
+		update_client(buffer.id,DISCONNECTED);
+	}else if(recved == 2){
+		REG_REJ_packet = create_udp_packet(REG_REJ,server_id,"00000000","Error d'identificació");
+		sendto(server_UDP_socket,(struct PDU_UDP *) &REG_REJ_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
+		update_client(buffer.id,DISCONNECTED);
+	}
+	return NULL;
+}
+
+void *register_handler_fun(void *argvs){ /*Bindeja socket 1 i crea thread al rebre paquets REG_REQ*/
+    struct sockaddr_in serv_addrs;
+    int server_UDP_socket;
+    pthread_t client_manager_thread;
+	fd_set selectset;
+    int retl;
 	
     memset(&serv_addrs,0,sizeof(struct sockaddr_in));
 
@@ -233,42 +262,9 @@ void *register_handler_fun(void *argvs){
 		retl = select(server_UDP_socket+1,&selectset,NULL,NULL,0);
 		if(retl){
 			if(FD_ISSET(server_UDP_socket,&selectset)){
-				recvfrom(server_UDP_socket,&buffer,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
-				print_debug("S'ha rebut un paquet");
-				if((recved = is_REG_REQ_correct(buffer)) == 0){
-					print_debug("El paquet REG_REQ es correcte"); /* El client passa a WAIT_ACK_REG*/
-					buffer.id[12] = '\0';
-					print_debug("Client envia REG_REQ, passa a WAIT_ACK_REG");
-					update_client(buffer.id,WAIT_ACK_REG);
-					set_client_address(buffer.id,cl_addrs);
-					rand = generate_random();
-					new_udp_port = generate_udp_port();
-					set_client_random(buffer.id,rand);
-					set_client_udp_port(buffer.id,new_udp_port);
-					print_debug("Creant thread per gestionar el registre d'un client\n");
-					sprintf((char *) str_rand,"%i",rand);
-					printf("String rand %s\n",(char *) str_rand);
-					sprintf((char *) str_new_udp_port,"%i",new_udp_port);
-					printf("String new udp port %s\n",(char *) str_new_udp_port);
-					REG_ACK_packet = create_udp_packet(REG_ACK,server_id,str_rand,str_new_udp_port);
-					/*Perque aleatori no es guarda pero dades si?*/
-					printf("Paquet aleatori %s\n",(char *) REG_ACK_packet.aleatori);
-					printf("Paquet dades %s\n",(char *) REG_ACK_packet.dades);
-					sendto(server_UDP_socket,(struct PDU_UDP *) &REG_ACK_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
-					arg = malloc(sizeof(*arg));
-					*arg = managing_client(buffer.id);
-					pthread_create(&alive_handlers[alive_handlers_counter],NULL,manage_client_register,(void *) arg);
-					client_manager_alive[alive_handlers_counter] = 1;
-					alive_handlers_counter++;
-				}else if(recved == 1){
-					REG_NACK_packet = create_udp_packet(REG_NACK,server_id,"00000000","Alguna cosa no quadra entre estats o dades");
-					sendto(server_UDP_socket,(struct PDU_UDP *) &REG_NACK_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
-					update_client(buffer.id,DISCONNECTED);
-				}else if(recved == 2){
-					REG_REJ_packet = create_udp_packet(REG_REJ,server_id,"00000000","Error d'identificació");
-					sendto(server_UDP_socket,(struct PDU_UDP *) &REG_REJ_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
-					update_client(buffer.id,DISCONNECTED);
-				}
+				print_debug("Creant thread per a rebre un paquet UDP");
+				pthread_create(&client_manager_thread,NULL,client_manager,(void *) &server_UDP_socket);
+				sleep(0.1);
 			}
 		}
     }
