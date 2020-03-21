@@ -21,6 +21,8 @@ int INFO_ACK = 3;
 int REG_NACK = 4;
 int INFO_NACK = 5;
 int REG_REJ = 6;
+int ALIVE = 16;
+int ALIVE_REJ = 17; 
 
 int DISCONNECTED = 160;
 int NOT_REGISTERED = 161;

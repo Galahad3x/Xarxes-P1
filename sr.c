@@ -102,9 +102,14 @@ int get_client_udp_port(char id[]){
 	return 0;
 }
 
-void *manage_client_register(void *argvs){
-	
-	return NULL;
+int get_client_status(char id[]){
+	int i = 0;
+	for(i = 0;i < 16;i++){
+		if(strcmp(clients[i].id,id) == 0){
+			return clients[i].status;
+		}
+	}
+	return 0;
 }
 
 void set_client_address(char affected_id[], struct sockaddr_in cl_addrs){
@@ -144,11 +149,36 @@ struct client managing_client(char id[]){
 	return clients[0];
 }
 
+int is_ALIVE_correct(struct PDU_UDP buff){
+	int i = 0;
+    if(buff.tipus != ALIVE){
+        return -1;
+    }
+    for(i = 0; i < 16; i++){
+        if(strcmp(buff.id,(char *) clients[i].id) == 0){
+            break;
+        }
+        if(i == 15){
+            return -1;
+        }
+    }
+    if(clients[i].status != REGISTERED && clients[i].status != SEND_ALIVE){
+		print_debug("S'ha rebut [ALIVE] en un estat que no era REGISTERED ni SEND_ALIVE");
+        return -1;
+    }
+    if(atoi(buff.aleatori) != clients[i].random || strcmp(buff.dades,"") != 0){
+		print_debug("Les dades o l'aleatori del [ALIVE] son incorrectes");
+        return -1;
+    }else{
+        return 0;
+    }
+}
+
 void *client_manager(void *argvs){
 	struct sockaddr_in serv_new_addrs,cl_addrs;
 	int rand,new_UDP_port,recved,new_UDP_socket,retl;
-	char str_rand[9],str_new_UDP_port[5];
-	struct PDU_UDP buffer,buffer2,REG_ACK_packet,REG_NACK_packet,REG_REJ_packet;
+	char str_rand[9],str_new_UDP_port[5],str_TCP_port[5],debug_msg[128];
+	struct PDU_UDP buffer,buffer2,REG_ACK_packet,REG_NACK_packet,REG_REJ_packet,ALIVE_packet, INFO_packet;
 	fd_set selectset;
 	struct timeval tv;
 	int len = sizeof(cl_addrs);
@@ -157,6 +187,9 @@ void *client_manager(void *argvs){
 	recvfrom(server_UDP_socket,&buffer,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
 	print_debug("S'ha rebut un paquet");
 	
+	/*Mirar si es REG_REQ o ALIVE
+	 * si es REG_REQ igual
+	 * si es ALIVE contestar*/
 	if((recved = is_REG_REQ_correct(buffer)) == 0){
 		print_debug("El paquet REG_REQ es correcte"); /* El client passa a WAIT_ACK_REG*/
 		buffer.id[12] = '\0';
@@ -211,8 +244,24 @@ void *client_manager(void *argvs){
 				}else{
 					printf("buffer %s buffer2 %s\n",buffer.id,buffer2.id);
 					if(rand == atoi(buffer2.aleatori) && strcmp(buffer.id,buffer2.id) == 0){
+						sprintf(str_TCP_port,"%i",server_TCP_port);
+						str_TCP_port[4] = '\0';
+						sprintf((char *) str_rand,"%i",rand);
+						str_rand[8] = '\0';
+						INFO_packet = create_udp_packet(INFO_ACK,server_id,str_rand,str_TCP_port);
+						sendto(new_UDP_socket,(struct PDU_UDP *) &INFO_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
 						/*Paquet REG_INFO correcte, llegir dades i contestar amb INFO_ACK*/
+						update_client(buffer2.id,REGISTERED);
+						sleep(3);
+						if(get_client_status(buffer2.id) == REGISTERED){ /* El client no ha enviat el primer alive */
+							sprintf(debug_msg,"El client %s no ha enviat el 1r [ALIVE]",(char *) buffer2.id);
+							print_debug(debug_msg);
+							update_client(buffer2.id,DISCONNECTED);
+						}
 					}else{
+						sprintf((char *) str_rand,"%i",rand);
+						str_rand[8] = '\0';
+						INFO_packet = create_udp_packet(INFO_ACK,server_id,str_rand,"Info no acceptada");
 						/*Paquet REG_INFO incorrecte, contestar amb INFO_NACK*/
 					}
 				}
@@ -231,6 +280,16 @@ void *client_manager(void *argvs){
 		REG_REJ_packet = create_udp_packet(REG_REJ,server_id,"00000000","Error d'identificació");
 		sendto(server_UDP_socket,(struct PDU_UDP *) &REG_REJ_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
 		update_client(buffer.id,DISCONNECTED);
+	}else{ /* El paquet és un ALIVE */
+		if((recved = is_ALIVE_correct(buffer)) == 0){
+			ALIVE_packet = create_udp_packet(ALIVE,server_id,buffer.aleatori,buffer.id);
+			update_client(buffer.id,SEND_ALIVE);
+			sendto(server_UDP_socket,(struct PDU_UDP *) &ALIVE_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
+		}else if (recved == -1){
+			ALIVE_packet = create_udp_packet(ALIVE_REJ,server_id,buffer.aleatori,buffer.id);
+			update_client(buffer.id,SEND_ALIVE);
+			sendto(server_UDP_socket,(struct PDU_UDP *) &ALIVE_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
+		}
 	}
 	return NULL;
 }
