@@ -33,11 +33,11 @@ int REGISTERED = 165;
 int SEND_ALIVE = 166;
 
 int generate_random(){
-    return 12345678;
+    return (rand() % (99999999 - 10000000 + 1)) + 10000000;
 }
 
 int generate_UDP_port(){
-    return 3501;
+    return (rand() % (65000 - 1024 + 1)) + 1024;
 }
 
 struct client{
@@ -47,6 +47,8 @@ struct client{
     struct sockaddr_in addr_UDP;
     int random;
     int new_udp_port;
+    int alive_recved;
+    int alives_no_answer;
 };
 
 struct PDU_UDP{
