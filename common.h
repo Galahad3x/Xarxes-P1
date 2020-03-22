@@ -46,6 +46,7 @@ struct client{
     char dispositius[16][8];
     struct sockaddr_in addr_UDP;
     int random;
+    int TCP_port;
     int new_udp_port;
     int alive_recved;
     int alives_no_answer;
@@ -56,4 +57,13 @@ struct PDU_UDP{
     char id[13];
     char aleatori[9];
     char dades[61];
+};
+
+struct PDU_TCP{
+	unsigned char tipus;
+	char id[13];
+	char aleatori[9];
+	char element[8];
+	char valor[16];
+	char info[80];
 };

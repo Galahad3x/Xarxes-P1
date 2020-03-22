@@ -1,11 +1,12 @@
 #include "common.h"
 
-pthread_t register_handler;
-volatile int register_handler_alive = 0;
-volatile int client_manager_alive[16];
+pthread_t register_handler,alive_controller_thread;
+volatile int register_handler_alive = 0,alive_controller_alive = 0;
 struct client clients[16];
 volatile int server_UDP_port = 0,server_TCP_port = 0;
+volatile int server_UDP_socket;
 char server_id[32];
+int debug = 0;
 
 struct PDU_UDP create_udp_packet(unsigned char tipus, char id[], char aleatori[], char dades[]){
     struct PDU_UDP packet;
@@ -43,11 +44,15 @@ int is_REG_REQ_correct(struct PDU_UDP buff){
         }
     }
     if(clients[i].status != DISCONNECTED && clients[i].status != NOT_REGISTERED){
-		print_debug("S'ha rebut [REG_REQ] en un estat que no era DISCONNECTED ni NOT_REGISTERED");
+		if(debug == 1){
+			print_debug("S'ha rebut [REG_REQ] en un estat que no era DISCONNECTED ni NOT_REGISTERED");
+		}
         return 1;
     }
     if(strcmp(buff.aleatori,"00000000\0") != 0 || strcmp(buff.dades,"") != 0){
-		print_debug("Les dades o l'aleatori del [REG_REQ] son incorrectes");
+		if(debug == 1){
+			print_debug("Les dades o l'aleatori del [REG_REQ] son incorrectes");
+		}
         return 1;
     }else{
         return 0;
@@ -57,17 +62,35 @@ int is_REG_REQ_correct(struct PDU_UDP buff){
 void handle_cntrc(){
     print_debug("Sortint per ^C");
     register_handler_alive = 0;
+    alive_controller_alive = 0;
     exit(0);
 }
 
 void update_client(char affected_id[],int new_status){
-    /*
-    setbuf(stdout,NULL);
-	fflush(stdout);
-	*/
 	int i = 0;
+	char debug_msg[128];
+	fflush(stdout);
 	for(i = 0;i < 16;i++){
 		if(strcmp(clients[i].id,affected_id) == 0){
+			if(new_status == DISCONNECTED){
+				sprintf(debug_msg,"Nou estat del client %s: DISCONNECTED",(char *) affected_id);
+			}else if (new_status == NOT_REGISTERED){
+				sprintf(debug_msg,"Nou estat del client %s: NOT_REGISTERED",(char *) affected_id);
+			}else if (new_status == WAIT_ACK_REG){
+				sprintf(debug_msg,"Nou estat del client %s: WAIT_ACK_REG",(char *) affected_id);
+			}else if (new_status == WAIT_INFO){
+				sprintf(debug_msg,"Nou estat del client %s: WAIT_INFO",(char *) affected_id);
+			}else if (new_status == WAIT_ACK_INFO){
+				sprintf(debug_msg,"Nou estat del client %s: WAIT_ACK_INFO",(char *) affected_id);
+			}else if (new_status == REGISTERED){
+				sprintf(debug_msg,"Nou estat del client %s: REGISTERED",(char *) affected_id);
+			}else if (new_status == SEND_ALIVE && clients[i].status != SEND_ALIVE){
+				sprintf(debug_msg,"Nou estat del client %s: SEND_ALIVE",(char *) affected_id);
+				print_debug(debug_msg);
+			}
+			if(new_status != SEND_ALIVE){
+				print_debug(debug_msg);
+			}
 			clients[i].status = new_status;
 		}
 	}
@@ -77,12 +100,25 @@ void list(){
     int i = 0,j = 0;
     printf("**********DADES DISPOSITIUS**********\n");
     printf("Id\t\tStatus\t\tDispositius\n");
-    for(i = 0; i < 15;i++){
+    for(i = 0; i < 16;i++){
 		if(strcmp(clients[i].id,"\0") != 0){
-			printf("%s\t%i\t\t",(char *) clients[i].id,clients[i].status);
-			/*Fer que printi text enlloc de número*/
-			for(j = 0; j < 15;j++){
-				if(strcmp(clients[i].dispositius[j],"\0") == 0){
+			if(clients[i].status == DISCONNECTED){
+				printf("%s\tDISCONNECTED\t",(char *) clients[i].id);
+			}else if (clients[i].status == NOT_REGISTERED){
+				printf("%s\tNOT_REGISTERED\t",(char *) clients[i].id);
+			}else if (clients[i].status == WAIT_ACK_REG){
+				printf("%s\tWAIT_ACK_REG\t",(char *) clients[i].id);
+			}else if (clients[i].status == WAIT_INFO){
+				printf("%s\tWAIT_INFO\t",(char *) clients[i].id);
+			}else if (clients[i].status == WAIT_ACK_INFO){
+				printf("%s\tWAIT_ACK_INFO\t",(char *) clients[i].id);
+			}else if (clients[i].status == REGISTERED){
+				printf("%s\tREGISTERED\t",(char *) clients[i].id);
+			}else if (clients[i].status == SEND_ALIVE){
+				printf("%s\tSEND_ALIVE\t",(char *) clients[i].id);
+			}
+			for(j = 0; j < 16;j++){
+				if(strcmp(clients[i].dispositius[j],"") == 0){
 					break;
 				}
 				printf("%s;",(char *) clients[i].dispositius[j]);
@@ -90,6 +126,7 @@ void list(){
 			printf("\n");
 		}
     }
+    printf("**************************************\n");
 }
 
 int get_client_udp_port(char id[]){
@@ -163,21 +200,60 @@ int is_ALIVE_correct(struct PDU_UDP buff){
         }
     }
     if(clients[i].status != REGISTERED && clients[i].status != SEND_ALIVE){
-		print_debug("S'ha rebut [ALIVE] en un estat que no era REGISTERED ni SEND_ALIVE");
+		if(debug == 1){
+			print_debug("S'ha rebut [ALIVE] en un estat que no era REGISTERED ni SEND_ALIVE");
+		}
         return -1;
     }
     if(atoi(buff.aleatori) != clients[i].random || strcmp(buff.dades,"") != 0){
-		print_debug("Les dades o l'aleatori del [ALIVE] son incorrectes");
+		if(debug == 1){
+			print_debug("Les dades o l'aleatori del [ALIVE] son incorrectes");
+		}
         return -1;
     }else{
         return 0;
     }
 }
 
+void set_client_alive(char id[]){
+	int i = 0;
+	for(i = 0;i < 16;i++){
+		if(strcmp(clients[i].id,id) == 0){
+			clients[i].alive_recved = 1;
+			clients[i].alives_no_answer = 0;
+		}
+	}
+}
+
+void set_TCP_port(char id[], char port[]){
+	int i = 0;
+	for(i = 0;i < 16;i++){
+		if(strcmp(clients[i].id,id) == 0){
+			clients[i].TCP_port = atoi(port);
+		}
+	}
+}
+
+void add_dispositiu(char id[], char dispositiu[]){
+	int i = 0, j = 0;
+	for(i = 0;i < 16;i++){
+		if(strcmp(clients[i].id,id) == 0){
+			j = 0;
+			for(j = 0;j < 16;j++){
+				if(strcmp(clients[i].dispositius[j],"") == 0){
+					strcpy(clients[i].dispositius[j],dispositiu);
+					break;
+				}
+			}	
+		}
+	}
+}
+
 void *client_manager(void *argvs){
 	struct sockaddr_in serv_new_addrs,cl_addrs;
 	int rand,new_UDP_port,recved,new_UDP_socket,retl;
-	char str_rand[9],str_new_UDP_port[5],str_TCP_port[5],debug_msg[128];
+	char str_rand[9],str_new_UDP_port[5],str_TCP_port[5],debug_msg[128],info_split[128];
+	char *ptr,*ptr2;
 	struct PDU_UDP buffer,buffer2,REG_ACK_packet,REG_NACK_packet,REG_REJ_packet,ALIVE_packet, INFO_packet;
 	fd_set selectset;
 	struct timeval tv;
@@ -185,15 +261,21 @@ void *client_manager(void *argvs){
 	int server_UDP_socket = *((int *) argvs);
 	
 	recvfrom(server_UDP_socket,&buffer,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
-	print_debug("S'ha rebut un paquet");
+	if(debug == 1){
+		print_debug("S'ha rebut un paquet pel port UDP principal");
+	}
 	
 	/*Mirar si es REG_REQ o ALIVE
 	 * si es REG_REQ igual
 	 * si es ALIVE contestar*/
 	if((recved = is_REG_REQ_correct(buffer)) == 0){
-		print_debug("El paquet REG_REQ es correcte"); /* El client passa a WAIT_ACK_REG*/
+		if(debug == 1){
+			print_debug("El paquet REG_REQ es correcte");
+		}
 		buffer.id[12] = '\0';
-		print_debug("Client envia REG_REQ, passa a WAIT_ACK_REG");
+		if(debug == 1){
+			print_debug("Client envia REG_REQ, passa a WAIT_ACK_REG");
+		}
 		update_client(buffer.id,WAIT_ACK_REG);
 		set_client_address(buffer.id,cl_addrs);
 		
@@ -204,10 +286,6 @@ void *client_manager(void *argvs){
 		
 		sprintf((char *) str_rand,"%i",rand);
 		str_rand[8] = '\0';
-		sprintf((char *) str_new_UDP_port,"%i",new_UDP_port);
-		str_new_UDP_port[4] = '\0';
-		
-		REG_ACK_packet = create_udp_packet(REG_ACK,server_id,str_rand,str_new_UDP_port);
 		
 		memset(&serv_new_addrs,0,sizeof(struct sockaddr_in));
 		    
@@ -217,11 +295,17 @@ void *client_manager(void *argvs){
 		
 		new_UDP_socket = socket(AF_INET,SOCK_DGRAM,0);
 		
-		if(bind(new_UDP_socket,(const struct sockaddr *)&serv_new_addrs,sizeof(serv_new_addrs))<0){
+		while(bind(new_UDP_socket,(const struct sockaddr *)&serv_new_addrs,sizeof(serv_new_addrs))<0){
 			print_debug("ERROR => No s'ha pogut bindejar el socket");
-			exit(-1);
+			new_UDP_port = generate_UDP_port();
+			serv_new_addrs.sin_port = htons(new_UDP_port);
 		}
 		print_debug("Nou socket bindejat correctament");
+		
+		sprintf((char *) str_new_UDP_port,"%i",new_UDP_port);
+		str_new_UDP_port[4] = '\0';
+		
+		REG_ACK_packet = create_udp_packet(REG_ACK,server_id,str_rand,str_new_UDP_port);
 		
 		/*Envia REG_ACK*/
 		sendto(server_UDP_socket,(struct PDU_UDP *) &REG_ACK_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
@@ -236,14 +320,30 @@ void *client_manager(void *argvs){
 			if(FD_ISSET(new_UDP_socket,&selectset)){
 				fflush(stdout);
 				recvfrom(new_UDP_socket,&buffer2,84, MSG_WAITALL,(struct sockaddr *) &cl_addrs, (socklen_t *) &len);
-				printf("Tipus nou paquet %i tipus reg_info %i\n",buffer2.tipus,REG_INFO);
 				/*Rebut paquet REG_INFO, contestar amb el paquet que toqui*/
 				if(buffer2.tipus != REG_INFO){
-					print_debug("Tipus de paquet no esperat, no es contestarà");
+					if (debug == 1){
+						print_debug("Tipus de paquet no esperat, no es contestarà");
+					}
 					update_client(buffer2.id,DISCONNECTED);
 				}else{
-					printf("buffer %s buffer2 %s\n",buffer.id,buffer2.id);
 					if(rand == atoi(buffer2.aleatori) && strcmp(buffer.id,buffer2.id) == 0){
+						
+						strcpy(info_split,buffer2.dades);
+						
+						ptr = strtok(info_split, ",");
+						
+						set_TCP_port(buffer2.id,ptr);
+						ptr = strtok(NULL, ",");
+						
+						ptr2 = strtok(ptr, ";");
+
+						while (ptr2 != NULL)
+						{
+							add_dispositiu(buffer2.id,ptr2);
+							ptr2 = strtok(NULL, ";");
+						}
+						
 						sprintf(str_TCP_port,"%i",server_TCP_port);
 						str_TCP_port[4] = '\0';
 						sprintf((char *) str_rand,"%i",rand);
@@ -282,6 +382,7 @@ void *client_manager(void *argvs){
 		update_client(buffer.id,DISCONNECTED);
 	}else{ /* El paquet és un ALIVE */
 		if((recved = is_ALIVE_correct(buffer)) == 0){
+			set_client_alive(buffer.id);
 			ALIVE_packet = create_udp_packet(ALIVE,server_id,buffer.aleatori,buffer.id);
 			update_client(buffer.id,SEND_ALIVE);
 			sendto(server_UDP_socket,(struct PDU_UDP *) &ALIVE_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
@@ -294,9 +395,42 @@ void *client_manager(void *argvs){
 	return NULL;
 }
 
+void *alive_controller(void *argvs){
+	int i = 0;
+	char str_rand[9],debug_msg[128];
+	struct PDU_UDP ALIVE_packet;
+	int len = sizeof(struct sockaddr_in);
+	while(alive_controller_alive != 0){
+		i = 0;
+		sleep(2);
+		for (i = 0;i < 16; i++){
+			if(clients[i].status == SEND_ALIVE){
+				if(clients[i].alives_no_answer == 3){
+					sprintf(debug_msg,"El client %s ha deixat d'enviar alives",(char *) clients[i].id);
+					print_debug(debug_msg);
+					update_client(clients[i].id,DISCONNECTED);
+				}
+				if(clients[i].alive_recved == 0){
+					sprintf((char *) str_rand,"%i",clients[i].random);
+					str_rand[8] = '\0';
+					ALIVE_packet = create_udp_packet(ALIVE,server_id,str_rand,clients[i].id);
+					if(debug == 1){
+						sprintf(debug_msg,"Enviant paquet [ALIVE] a %s",(char *) clients[i].id); 
+						print_debug(debug_msg);
+					}
+					sendto(server_UDP_socket,(struct PDU_UDP *) &ALIVE_packet,84,MSG_CONFIRM,(struct sockaddr *) &clients[i].addr_UDP, len);
+					clients[i].alives_no_answer++;
+				}else{
+					clients[i].alive_recved = 0;
+				}
+			}
+		}
+	}
+	return NULL;
+}
+
 void *register_handler_fun(void *argvs){ /*Bindeja socket 1 i crea thread al rebre paquets REG_REQ*/
     struct sockaddr_in serv_addrs;
-    int server_UDP_socket;
     pthread_t client_manager_thread;
 	fd_set selectset;
     int retl;
@@ -339,7 +473,7 @@ void ezlist(){
 
 int main(int argc,char *argv[]){
     FILE *cfg_file,*dat_file;
-    int i,j,debug = 0;
+    int i,j;
     char filename[64] = "",datab_name[64] = "";
     char server_UDP_port_read[16],server_UDP_port_arr[4];
     char server_TCP_port_read[16],server_TCP_port_arr[4];
@@ -413,10 +547,16 @@ int main(int argc,char *argv[]){
     }
     dat_file = fopen(datab_name,"r");
     i = 0;
-    while(i < 15){
+    while(i < 16){
         fgets(clients[i].id,32,dat_file);
         clients[i].id[12] = '\0';
         clients[i].status = DISCONNECTED;
+        j = 0;
+        for (j = 0; j < 16;j++){
+			strcpy(clients[i].dispositius[j],"");
+		}
+        clients[i].alive_recved = 0;
+        clients[i].alives_no_answer = 0;
         i++;
     }
     if(fclose(dat_file) != 0){
@@ -435,7 +575,9 @@ int main(int argc,char *argv[]){
         allowed_disps = ids aceptades de clients
     */
     register_handler_alive = 1;
+    alive_controller_alive = 1;
     pthread_create(&register_handler,NULL,register_handler_fun,NULL);
+    pthread_create(&alive_controller_thread,NULL,alive_controller,NULL);
     signal(SIGINT,handle_cntrc);
     while(0 < 1){
         sleep(10);
