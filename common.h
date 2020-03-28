@@ -14,6 +14,9 @@
 #include <signal.h>
 #include <pthread.h>
 
+#define MAX_CLIENTS 16
+#define MAX_DISPS 16
+
 int REG_REQ = 0;
 int REG_INFO = 1;
 int REG_ACK = 2;
@@ -23,6 +26,12 @@ int INFO_NACK = 5;
 int REG_REJ = 6;
 int ALIVE = 16;
 int ALIVE_REJ = 17; 
+int SEND_DATA = 32;
+int SET_DATA = 33;
+int GET_DATA = 34;
+int DATA_ACK = 35;
+int DATA_NACK = 36;
+int DATA_REJ = 37;
 
 int DISCONNECTED = 160;
 int NOT_REGISTERED = 161;

@@ -1,8 +1,8 @@
 #include "common.h"
 
-pthread_t register_handler,alive_controller_thread;
-volatile int register_handler_alive = 0,alive_controller_alive = 0;
-struct client clients[16];
+pthread_t register_handler,alive_controller_thread,tcp_connections_thread;
+volatile int register_handler_alive = 0,alive_controller_alive = 0,tcp_connections_alive = 0;
+struct client clients[MAX_CLIENTS];
 volatile int server_UDP_port = 0,server_TCP_port = 0;
 volatile int server_UDP_socket;
 char server_id[32];
@@ -14,6 +14,17 @@ struct PDU_UDP create_udp_packet(unsigned char tipus, char id[], char aleatori[]
     strcpy(packet.id,id);
     strcpy(packet.aleatori,aleatori);
     strcpy(packet.dades,dades);
+    return packet;
+}
+
+struct PDU_TCP create_tcp_packet(unsigned char tipus, char id[], char aleatori[], char element[], char valor[], char info[]){
+    struct PDU_TCP packet;
+    packet.tipus = tipus;
+    strcpy(packet.id,id);
+    strcpy(packet.aleatori,aleatori);
+    strcpy(packet.element,element);
+    strcpy(packet.valor,valor);
+    strcpy(packet.info,info);
     return packet;
 }
 
@@ -35,7 +46,7 @@ int is_REG_REQ_correct(struct PDU_UDP buff){
     if(buff.tipus != REG_REQ){
         return -1;
     }
-    for(i = 0; i < 16; i++){
+    for(i = 0; i < MAX_CLIENTS; i++){
         if(strcmp(buff.id,(char *) clients[i].id) == 0){
             break;
         }
@@ -70,7 +81,7 @@ void update_client(char affected_id[],int new_status){
 	int i = 0;
 	char debug_msg[128];
 	fflush(stdout);
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,affected_id) == 0){
 			if(new_status == DISCONNECTED){
 				sprintf(debug_msg,"Nou estat del client %s: DISCONNECTED",(char *) affected_id);
@@ -100,7 +111,7 @@ void list(){
     int i = 0,j = 0;
     printf("**********DADES DISPOSITIUS**********\n");
     printf("Id\t\tStatus\t\tDispositius\n");
-    for(i = 0; i < 16;i++){
+    for(i = 0; i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,"\0") != 0){
 			if(clients[i].status == DISCONNECTED){
 				printf("%s\tDISCONNECTED\t",(char *) clients[i].id);
@@ -117,8 +128,8 @@ void list(){
 			}else if (clients[i].status == SEND_ALIVE){
 				printf("%s\tSEND_ALIVE\t",(char *) clients[i].id);
 			}
-			for(j = 0; j < 16;j++){
-				if(strcmp(clients[i].dispositius[j],"") == 0){
+			for(j = 0; j < MAX_DISPS;j++){
+				if(strcmp(clients[i].dispositius[j],"\0") == 0){
 					break;
 				}
 				printf("%s;",(char *) clients[i].dispositius[j]);
@@ -131,7 +142,7 @@ void list(){
 
 int get_client_udp_port(char id[]){
 	int i = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,id) == 0){
 			return clients[i].new_udp_port;
 		}
@@ -141,7 +152,7 @@ int get_client_udp_port(char id[]){
 
 int get_client_status(char id[]){
 	int i = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,id) == 0){
 			return clients[i].status;
 		}
@@ -151,7 +162,7 @@ int get_client_status(char id[]){
 
 void set_client_address(char affected_id[], struct sockaddr_in cl_addrs){
 	int i = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,affected_id) == 0){
 			clients[i].addr_UDP = cl_addrs;
 		}
@@ -160,7 +171,7 @@ void set_client_address(char affected_id[], struct sockaddr_in cl_addrs){
 
 void set_client_random(char affected_id[], int random){
 	int i = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,affected_id) == 0){
 			clients[i].random = random;
 		}
@@ -169,7 +180,7 @@ void set_client_random(char affected_id[], int random){
 
 void set_client_udp_port(char affected_id[], int udp_port){
 	int i = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,affected_id) == 0){
 			clients[i].new_udp_port = udp_port;
 		}
@@ -178,7 +189,7 @@ void set_client_udp_port(char affected_id[], int udp_port){
 
 struct client managing_client(char id[]){
 	int i = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,id) == 0){
 			return clients[i];
 		}
@@ -191,7 +202,7 @@ int is_ALIVE_correct(struct PDU_UDP buff){
     if(buff.tipus != ALIVE){
         return -1;
     }
-    for(i = 0; i < 16; i++){
+    for(i = 0; i < MAX_CLIENTS; i++){
         if(strcmp(buff.id,(char *) clients[i].id) == 0){
             break;
         }
@@ -217,7 +228,7 @@ int is_ALIVE_correct(struct PDU_UDP buff){
 
 void set_client_alive(char id[]){
 	int i = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,id) == 0){
 			clients[i].alive_recved = 1;
 			clients[i].alives_no_answer = 0;
@@ -227,7 +238,7 @@ void set_client_alive(char id[]){
 
 void set_TCP_port(char id[], char port[]){
 	int i = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,id) == 0){
 			clients[i].TCP_port = atoi(port);
 		}
@@ -236,11 +247,14 @@ void set_TCP_port(char id[], char port[]){
 
 void add_dispositiu(char id[], char dispositiu[]){
 	int i = 0, j = 0;
-	for(i = 0;i < 16;i++){
+	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,id) == 0){
 			j = 0;
-			for(j = 0;j < 16;j++){
-				if(strcmp(clients[i].dispositius[j],"") == 0){
+			for(j = 0;j < MAX_DISPS;j++){
+			    if(strcmp(clients[i].dispositius[j],dispositiu) == 0){
+			        break;
+			    }
+				if(strcmp(clients[i].dispositius[j],"\0") == 0){
 					strcpy(clients[i].dispositius[j],dispositiu);
 					break;
 				}
@@ -403,7 +417,7 @@ void *alive_controller(void *argvs){
 	while(alive_controller_alive != 0){
 		i = 0;
 		sleep(2);
-		for (i = 0;i < 16; i++){
+		for (i = 0;i < MAX_CLIENTS; i++){
 			if(clients[i].status == SEND_ALIVE){
 				if(clients[i].alives_no_answer == 3){
 					sprintf(debug_msg,"El client %s ha deixat d'enviar alives",(char *) clients[i].id);
@@ -464,11 +478,150 @@ void *register_handler_fun(void *argvs){ /*Bindeja socket 1 i crea thread al reb
     return NULL;
 }
 
-void ezlist(){
+int correct_id(char id[],int aleatori){
+	/* 0 = error
+	 * 1 = correcte */
 	int i = 0;
-	for(i = 0;i < 16;i++){
-		printf("id %s status %i\n", clients[i].id,clients[i].status);
+	for (i = 0; i < MAX_CLIENTS; i++){
+		if(strcmp(clients[i].id,id) == 0){
+			if(aleatori == clients[i].random){
+				if(clients[i].status == SEND_ALIVE){
+					return 1;
+				}else{
+					return 0;
+				}
+			}else{
+				return 0;
+			}
+		}
 	}
+	return 0;
+}
+
+int element_in_client(char id[], char element[]){
+	int i = 0, j = 0;
+	for(i = 0;i < MAX_CLIENTS;i++){
+		if(strcmp(clients[i].id,id) == 0){
+			j = 0;
+			for(j = 0;j < MAX_DISPS;j++){
+			    if(strcmp(clients[i].dispositius[j],element) == 0){
+			        return 1;
+			    }
+			}
+			return 0;	
+		}
+	}
+	return 0;
+}
+
+int is_SEND_DATA_correct(struct PDU_TCP buffer){
+	/* -1 = No contestar
+	 *  0 = DATA_ACK
+	 *  1 = DATA_NACK fitxer
+	 *  2 = DATA_REJ
+	 *  3 = DATA_NACK dades
+	 * */
+	FILE *logfile;
+	char filename[18];
+	char res_str[128];
+	time_t timet;
+	char *tlocal;
+	int putsr;
+	
+	if(buffer.tipus != SEND_DATA){
+		return -1;
+	}
+	
+	if(correct_id(buffer.id,atoi(buffer.aleatori)) == 0){
+		update_client(buffer.id,DISCONNECTED);
+		return 2;
+	}else{
+		sprintf(filename,"%s.data",(char *) buffer.id);
+		if(element_in_client(buffer.id,buffer.element) == 0){
+			return 3;
+		}
+		logfile = fopen(filename,"a");
+		timet = time(NULL);
+		tlocal = ctime(&timet);
+		tlocal[strlen(tlocal) - 1] = '\0';
+		fflush(stdout);
+		sprintf(res_str,"%s;SEND_DATA;%s;%s\n",tlocal,buffer.element,buffer.valor);
+		putsr = fputs(res_str,logfile);
+		if (putsr == EOF){
+			return 1;
+		}
+		putsr = fclose(logfile);
+		if (putsr == EOF){
+			return 1;
+		}
+		return 0;
+	}
+}
+
+void *tcp_man(void *argvs){
+	int csocket;
+	struct PDU_TCP RECV_packet, SEND_packet;
+	int recved;
+	
+	csocket = *((int *) argvs);
+	
+	recv(csocket,(struct PDU_UDP *) &RECV_packet,sizeof(struct PDU_TCP),0);
+	
+	if((recved = is_SEND_DATA_correct(RECV_packet)) == 0){
+		SEND_packet = create_tcp_packet(DATA_ACK,server_id,RECV_packet.aleatori,RECV_packet.element,RECV_packet.valor,RECV_packet.id);
+	}else if(recved == -1){
+		close(csocket);
+	}else if(recved == 1){
+		SEND_packet = create_tcp_packet(DATA_NACK,server_id,RECV_packet.aleatori,RECV_packet.element,RECV_packet.valor,"Hi ha hagut un error amb el fitxer");
+	}else if(recved == 2){
+		SEND_packet = create_tcp_packet(DATA_REJ,server_id,RECV_packet.aleatori,RECV_packet.element,RECV_packet.valor,"Error d'identificació");
+	}else if(recved == 3){
+		SEND_packet = create_tcp_packet(DATA_NACK,server_id,RECV_packet.aleatori,RECV_packet.element,RECV_packet.valor,"Hi ha hagut un error amb els dispositius");
+	}
+	if(recved != -1){
+		send(csocket,&SEND_packet,sizeof(struct PDU_TCP),0);
+		close(csocket);
+	}
+	return NULL;
+}
+
+void *tcp_connections(void *argvs){
+	int TCP_socket,new_socket,retl,len;
+	struct sockaddr_in serv_addrs,cl_addrs;
+	pthread_t pack_manager;
+	fd_set selectset;
+	
+	len = sizeof(serv_addrs);
+	
+	TCP_socket = socket(AF_INET,SOCK_STREAM,0);
+	
+	serv_addrs.sin_family = AF_INET;
+    serv_addrs.sin_port = htons(server_TCP_port);
+    serv_addrs.sin_addr.s_addr = INADDR_ANY;
+    
+	if(bind(TCP_socket,(const struct sockaddr *)&serv_addrs,(socklen_t) len)<0){
+        print_debug("ERROR => No s'ha pogut bindejar el socket TCP");
+        exit(-1);
+    }
+    if(debug == 1){
+		print_debug("Socket TCP bindejat correctament");
+	}
+	
+	listen(TCP_socket,5);
+	
+	while(tcp_connections_alive == 1){
+		FD_ZERO(&selectset);
+		FD_SET(TCP_socket,&selectset);
+		retl = select(TCP_socket+1,&selectset,NULL,NULL,0);
+		if(retl){
+			new_socket = accept(TCP_socket,(struct sockaddr *) &cl_addrs,(socklen_t * ) &len);
+			if (debug == 1){
+				print_debug("S'ha rebut una connexió pel port TCP");
+			}
+			pthread_create(&pack_manager,NULL,tcp_man,(void *) &new_socket);
+		}
+	}
+	return NULL;
 }
 
 int main(int argc,char *argv[]){
@@ -547,13 +700,13 @@ int main(int argc,char *argv[]){
     }
     dat_file = fopen(datab_name,"r");
     i = 0;
-    while(i < 16){
+    while(i < MAX_CLIENTS){
         fgets(clients[i].id,32,dat_file);
         clients[i].id[12] = '\0';
         clients[i].status = DISCONNECTED;
         j = 0;
-        for (j = 0; j < 16;j++){
-			strcpy(clients[i].dispositius[j],"");
+        for (j = 0; j < MAX_DISPS;j++){
+			strcpy(clients[i].dispositius[j],"\0");
 		}
         clients[i].alive_recved = 0;
         clients[i].alives_no_answer = 0;
@@ -576,8 +729,10 @@ int main(int argc,char *argv[]){
     */
     register_handler_alive = 1;
     alive_controller_alive = 1;
+    tcp_connections_alive = 1;
     pthread_create(&register_handler,NULL,register_handler_fun,NULL);
     pthread_create(&alive_controller_thread,NULL,alive_controller,NULL);
+    pthread_create(&tcp_connections_thread,NULL,tcp_connections,NULL);
     signal(SIGINT,handle_cntrc);
     while(0 < 1){
         sleep(10);
