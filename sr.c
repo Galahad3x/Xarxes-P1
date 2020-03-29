@@ -187,16 +187,6 @@ void set_client_udp_port(char affected_id[], int udp_port){
 	}
 }
 
-struct client managing_client(char id[]){
-	int i = 0;
-	for(i = 0;i < MAX_CLIENTS;i++){
-		if(strcmp(clients[i].id,id) == 0){
-			return clients[i];
-		}
-	}
-	return clients[0];
-}
-
 int is_ALIVE_correct(struct PDU_UDP buff){
 	int i = 0;
     if(buff.tipus != ALIVE){
@@ -206,7 +196,7 @@ int is_ALIVE_correct(struct PDU_UDP buff){
         if(strcmp(buff.id,(char *) clients[i].id) == 0){
             break;
         }
-        if(i == 15){
+        if(i == (MAX_CLIENTS - 1)){
             return -1;
         }
     }
@@ -624,12 +614,23 @@ void *tcp_connections(void *argvs){
 	return NULL;
 }
 
+int set(char clid[],char elem[],char val[]){
+	if(strcmp(clid,"") == 0 || strcmp(elem,"") == 0 || strcmp(val,"") == 0){
+		print_debug("Malament");
+	}else{
+		printf("%s %s %s\n",(char *) clid, (char *) elem, (char *) val);
+	}	
+	return 0;
+}
+
 int main(int argc,char *argv[]){
     FILE *cfg_file,*dat_file;
-    int i,j;
+    int i,j,operation_result;
     char filename[64] = "",datab_name[64] = "";
     char server_UDP_port_read[16],server_UDP_port_arr[4];
     char server_TCP_port_read[16],server_TCP_port_arr[4];
+    char buff_comm[255];
+    char params[4][255];
     for(i = 1; i < argc;i++){
         if(strcmp(argv[i],"-c") == 0){
             if((i+1) < argc && strlen(argv[i+1]) <= 64){
@@ -734,9 +735,25 @@ int main(int argc,char *argv[]){
     pthread_create(&alive_controller_thread,NULL,alive_controller,NULL);
     pthread_create(&tcp_connections_thread,NULL,tcp_connections,NULL);
     signal(SIGINT,handle_cntrc);
+    printf("Yo\n");
     while(0 < 1){
-        sleep(10);
-        list();
+		i = 0;
+		while (i < 4){
+			strcpy(params[i],"");
+		}
+		fflush(stdout);
+		printf("Ayay\n");
+		fgets(buff_comm, 255, stdin);
+		printf("Ayay\n");
+		char *ptr = strtok(buff_comm, " ");
+		i = 0;
+		while(ptr != NULL && i < 4){
+			printf("'%s'", ptr);
+			strcpy(params[i],ptr);
+			ptr = strtok(NULL, " ");
+		}
+		/* Triar operacio segons params[0] */
+		operation_result = set(params[1],params[2],params[3]);
     }
     exit(0);
 }

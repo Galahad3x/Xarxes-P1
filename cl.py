@@ -29,12 +29,6 @@ packtypes = {"REG_REQ": 0, "REG_INFO": 1, "REG_ACK": 2, "INFO_ACK": 3, "REG_NACK
              "SEND_DATA": int("0x20", base=16), "SET_DATA": int("0x21", base=16), "GET_DATA": int("0x22", base=16),
              "DATA_ACK": int("0x23", base=16), "DATA_NACK": int("0x24", base=16), "DATA_REJ": int("0x25", base=16)}
 
-# ,
-# "DISCONNECTED": int("0xa0", base=16), "NOT_REGISTERED": int("0xa1", base=16),
-# "WAIT_ACK_REG": int("0xa2", base=16), "WAIT_INFO": int("0xa3", base=16),
-# "WAIT_ACK_INFO": int("0xa4", base=16), "REGISTERED": int("0xa5", base=16),
-# "SEND_ALIVE": int("0xa6", base=16)
-
 debug = False
 configfile = "client.cfg"
 status = "DISCONNECTED"
@@ -82,7 +76,6 @@ with open(configfile, "r") as f:
 
 should_send_reg_req = True
 should_child_sleeps_alive = False
-should_restart = False
 
 
 def register():
@@ -201,15 +194,13 @@ def register_waiting():
                         print(dt() + "Reprenent enviament de REG_REQ")
                     status = "NOT_REGISTERED"
                     print(dt() + "STATUS = " + str(status))
-                    attempted_registers += 1
-                    num_of_packets = 0
                     register()
                 else:
                     if debug:
                         print(dt() + "Iniciant nou procés de registre")
                     status = "NOT_REGISTERED"
                     print(dt() + "STATUS = " + str(status))
-                    attempted_registers = 0
+                    attempted_registers += 1
                     num_of_packets = 0
                     register()
             else:
@@ -226,7 +217,7 @@ def register_waiting():
                         print(dt() + "No s'ha rebut el paquet INFO_ACK")
                     status = "NOT_REGISTERED"
                     print(dt() + "STATUS = " + str(status))
-                    attempted_registers = 0
+                    attempted_registers += 1
                     num_of_packets = 0
                     register()
                 else:
@@ -284,7 +275,7 @@ def alive_thread_communication():
 
     def send_alive():
         global should_clock_alive
-        global status, sent_alives, send_alive_packet, should_restart
+        global status, sent_alives, send_alive_packet
         if debug:
             print(dt() + "Enviant paquet ALIVE")
         if sent_alives == 3:
@@ -351,11 +342,10 @@ alive_handling()
 
 
 def hand(signum, handler):
-    global data, rand, should_clock_alive, should_send_reg_req, should_child_sleeps_alive, should_restart
+    global data, rand, should_clock_alive, should_send_reg_req, should_child_sleeps_alive
     print(dt() + "Intentant tornar a registrar")
     should_send_reg_req = True
     should_child_sleeps_alive = True
-    should_restart = False
     register()
     data, rand = register_waiting()
     should_clock_alive = True
