@@ -74,6 +74,7 @@ void handle_cntrc(){
     print_debug("Sortint per ^C");
     register_handler_alive = 0;
     alive_controller_alive = 0;
+    tcp_connections_alive = 0;
     exit(0);
 }
 
@@ -99,7 +100,7 @@ void update_client(char affected_id[],int new_status){
 				sprintf(debug_msg,"Nou estat del client %s: SEND_ALIVE",(char *) affected_id);
 				print_debug(debug_msg);
 			}
-			if(new_status != SEND_ALIVE){
+			if(new_status != SEND_ALIVE && debug == 1){
 				print_debug(debug_msg);
 			}
 			clients[i].status = new_status;
@@ -371,7 +372,6 @@ void *client_manager(void *argvs){
 				}
 			}
 		}else{
-			char debug_msg[128];
 			sprintf(debug_msg,"El client %s no ha contestat el REG_ACK",buffer.id);
 			print_debug(debug_msg);
 			update_client(buffer.id,DISCONNECTED);
@@ -389,6 +389,10 @@ void *client_manager(void *argvs){
 			set_client_alive(buffer.id);
 			ALIVE_packet = create_udp_packet(ALIVE,server_id,buffer.aleatori,buffer.id);
 			update_client(buffer.id,SEND_ALIVE);
+			if(debug == 1){
+				sprintf(debug_msg,"Enviant paquet [ALIVE] a %s",(char *) buffer.id); 
+				print_debug(debug_msg);
+			}
 			sendto(server_UDP_socket,(struct PDU_UDP *) &ALIVE_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
 		}else if (recved == -1){
 			ALIVE_packet = create_udp_packet(ALIVE_REJ,server_id,buffer.aleatori,buffer.id);
@@ -451,7 +455,9 @@ void *register_handler_fun(void *argvs){ /*Bindeja socket 1 i crea thread al reb
         print_debug("ERROR => No s'ha pogut bindejar el socket");
         exit(-1);
     }
-    print_debug("Socket bindejat correctament");
+    if(debug == 1){
+		print_debug("Socket bindejat correctament");
+	}
     
     while(register_handler_alive == 1){
 		FD_ZERO(&selectset);
@@ -459,7 +465,9 @@ void *register_handler_fun(void *argvs){ /*Bindeja socket 1 i crea thread al reb
 		retl = select(server_UDP_socket+1,&selectset,NULL,NULL,0);
 		if(retl){
 			if(FD_ISSET(server_UDP_socket,&selectset)){
-				print_debug("Creant thread per a rebre un paquet UDP");
+				if(debug == 1){
+					print_debug("Creant thread per a rebre un paquet UDP");
+				}
 				pthread_create(&client_manager_thread,NULL,client_manager,(void *) &server_UDP_socket);
 				sleep(0.1);
 			}
@@ -618,9 +626,21 @@ int set(char clid[],char elem[],char val[]){
 	if(strcmp(clid,"") == 0 || strcmp(elem,"") == 0 || strcmp(val,"") == 0){
 		print_debug("Malament");
 	}else{
+		fflush(stdout);
 		printf("%s %s %s\n",(char *) clid, (char *) elem, (char *) val);
 	}	
 	return 0;
+}
+
+int get(char clid[],char elem[]){
+	return 0;
+}
+
+void quit(){
+    register_handler_alive = 0;
+    alive_controller_alive = 0;
+    tcp_connections_alive = 0;
+    exit(0);
 }
 
 int main(int argc,char *argv[]){
@@ -631,6 +651,7 @@ int main(int argc,char *argv[]){
     char server_TCP_port_read[16],server_TCP_port_arr[4];
     char buff_comm[255];
     char params[4][255];
+    char *ptr;
     for(i = 1; i < argc;i++){
         if(strcmp(argv[i],"-c") == 0){
             if((i+1) < argc && strlen(argv[i+1]) <= 64){
@@ -735,25 +756,42 @@ int main(int argc,char *argv[]){
     pthread_create(&alive_controller_thread,NULL,alive_controller,NULL);
     pthread_create(&tcp_connections_thread,NULL,tcp_connections,NULL);
     signal(SIGINT,handle_cntrc);
-    printf("Yo\n");
+	fflush(stdout);
     while(0 < 1){
 		i = 0;
 		while (i < 4){
 			strcpy(params[i],"");
+			i++;
 		}
 		fflush(stdout);
-		printf("Ayay\n");
 		fgets(buff_comm, 255, stdin);
-		printf("Ayay\n");
-		char *ptr = strtok(buff_comm, " ");
+		buff_comm[strlen(buff_comm) - 1] = '\0';
+		ptr = strtok(buff_comm, " ");
 		i = 0;
-		while(ptr != NULL && i < 4){
-			printf("'%s'", ptr);
+		while(i < 4 && ptr != NULL){
 			strcpy(params[i],ptr);
 			ptr = strtok(NULL, " ");
+			i++;
 		}
-		/* Triar operacio segons params[0] */
-		operation_result = set(params[1],params[2],params[3]);
+		if (strcmp(params[0],"set") == 0){
+			operation_result = set(params[1],params[2],params[3]);
+		}else if(strcmp(params[0], "get") == 0){
+			operation_result = get(params[1],params[2]);
+		}else if(strcmp(params[0],"list") == 0){
+			list();
+		}else if(strcmp(params[0],"quit") == 0){
+			quit();
+		}else if(strcmp(params[0],"debug") == 0){
+			if(debug == 0){
+				print_debug("Mode debug activat");
+				debug = 1;
+			}else{
+				debug = 0;
+				print_debug("Mode debug desactivat");
+			}
+		}else{
+			print_debug("Comanda errònea");
+		}
     }
     exit(0);
 }
