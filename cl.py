@@ -428,6 +428,7 @@ def send(param_name):
         else:
             pack_from_server = send_data_socket.recv(struct.calcsize("B13s9s8s16s80s"), 0)
             data_from_server = decompose_TCP(pack_from_server)
+            print(data_from_server)
 
 
 def help():

@@ -236,6 +236,15 @@ void set_TCP_port(char id[], char port[]){
 	}
 }
 
+void set_TCP_addr(char id[], struct sockaddr_in addr[]){
+	int i = 0;
+	for(i = 0;i < MAX_CLIENTS;i++){
+		if(strcmp(clients[i].id,id) == 0){
+			clients[i].addr_TCP = addr;
+		}
+	}
+}
+
 void add_dispositiu(char id[], char dispositiu[]){
 	int i = 0, j = 0;
 	for(i = 0;i < MAX_CLIENTS;i++){
@@ -255,7 +264,7 @@ void add_dispositiu(char id[], char dispositiu[]){
 }
 
 void *client_manager(void *argvs){
-	struct sockaddr_in serv_new_addrs,cl_addrs;
+	struct sockaddr_in serv_new_addrs,cl_addrs,cl_tcp;
 	int rand,new_UDP_port,recved,new_UDP_socket,retl;
 	char str_rand[9],str_new_UDP_port[5],str_TCP_port[5],debug_msg[128],info_split[128];
 	char *ptr,*ptr2;
@@ -339,6 +348,13 @@ void *client_manager(void *argvs){
 						ptr = strtok(info_split, ",");
 						
 						set_TCP_port(buffer2.id,ptr);
+						
+						cl_tcp.sin_family = AF_INET;
+						cl_tcp.sin_port = htons(atoi(ptr));
+						cl_tcp.sin_addr.s_addr = cl_addrs.sin_addr.s_addr;
+		
+						set_TCP_addr(buffer2.id,(struct sockaddr_in *) &cl_tcp);
+		
 						ptr = strtok(NULL, ",");
 						
 						ptr2 = strtok(ptr, ";");
@@ -623,17 +639,121 @@ void *tcp_connections(void *argvs){
 }
 
 int set(char clid[],char elem[],char val[]){
+	struct PDU_TCP SEND_pack,buffer;
+	int tcp_sock;
+	int i,retl;
+	struct timeval tv;
+	fd_set selectset;
+	FILE *logfile;
+	char filename[128];
+	char res_str[128];
+	time_t timet;
+	char *tlocal;
 	if(strcmp(clid,"") == 0 || strcmp(elem,"") == 0 || strcmp(val,"") == 0){
-		print_debug("Malament");
+		print_debug("Comanda errònea. Ús: set <id_client> <element> <valor>");
 	}else{
 		fflush(stdout);
-		printf("%s %s %s\n",(char *) clid, (char *) elem, (char *) val);
-	}	
-	return 0;
+		tcp_sock = socket(AF_INET,SOCK_STREAM,0);
+		i = 0;
+		for(i = 0; i < MAX_CLIENTS;i++){
+			if(strcmp(clients[i].id,clid) == 0){
+				SEND_pack = create_tcp_packet(SET_DATA,server_id,(char *) &clients[i].random,elem,val,clid);
+				connect(tcp_sock,(struct sockaddr *) clients[i].addr_TCP,sizeof(struct sockaddr_in));
+				send(tcp_sock,(struct PDU_TCP *) &SEND_pack,sizeof(struct PDU_TCP),0);
+				FD_ZERO(&selectset);
+				FD_SET(tcp_sock,&selectset);
+				tv.tv_sec = 3;
+				tv.tv_usec = 0;
+				retl = select(tcp_sock+1,&selectset,NULL,NULL,(struct timeval *) &tv);
+				if(retl){
+					recv(tcp_sock,&buffer,sizeof(struct PDU_TCP),0);
+					if(buffer.tipus == DATA_REJ){
+						print_debug("S'han rebutjat les dades");
+					}else if(buffer.tipus == DATA_NACK){
+						print_debug("No s'han pogut guardar les dades");
+					}else if(buffer.tipus == DATA_ACK){
+						print_debug("S'han acceptat les dades");
+						sprintf(filename,"%s.data",(char *) buffer.id);
+						logfile = fopen(filename,"a");
+						timet = time(NULL);
+						tlocal = ctime(&timet);
+						tlocal[strlen(tlocal) - 1] = '\0';
+						fflush(stdout);
+						sprintf(res_str,"%s;SET_DATA;%s;%s\n",tlocal,buffer.element,buffer.valor);
+						fputs(res_str,logfile);
+						fclose(logfile);
+						close(tcp_sock);
+						return 0;
+					}else{
+						print_debug("Paquet no esperat");
+					}
+				}else{
+					print_debug("El client no ha contestat");
+				}
+			}
+		}
+	}
+	close(tcp_sock);	
+	return -1;
 }
 
 int get(char clid[],char elem[]){
-	return 0;
+	struct PDU_TCP SEND_pack,buffer;
+	int tcp_sock;
+	int i,retl;
+	struct timeval tv;
+	fd_set selectset;
+	FILE *logfile;
+	char filename[128];
+	char res_str[128];
+	time_t timet;
+	char *tlocal;
+	if(strcmp(clid,"") == 0 || strcmp(elem,"") == 0){
+		print_debug("Comanda errònea. Ús: get <id_client> <element>");
+	}else{
+		fflush(stdout);
+		tcp_sock = socket(AF_INET,SOCK_STREAM,0);
+		i = 0;
+		for(i = 0; i < MAX_CLIENTS;i++){
+			if(strcmp(clients[i].id,clid) == 0){
+				SEND_pack = create_tcp_packet(GET_DATA,server_id,(char *) &clients[i].random,elem,"",clid);
+				connect(tcp_sock,(struct sockaddr *) &clients[i].addr_TCP,sizeof(struct sockaddr_in));
+				send(tcp_sock,(struct PDU_TCP *) &SEND_pack,sizeof(struct PDU_TCP),0);
+				FD_ZERO(&selectset);
+				FD_SET(tcp_sock,&selectset);
+				tv.tv_sec = 3;
+				tv.tv_usec = 0;
+				retl = select(tcp_sock+1,&selectset,NULL,NULL,(struct timeval *) &tv);
+				if(retl){
+					recv(tcp_sock,&buffer,sizeof(struct PDU_TCP),0);
+					if(buffer.tipus == DATA_REJ){
+						print_debug("S'han rebutjat les dades");
+					}else if(buffer.tipus == DATA_NACK){
+						print_debug("No s'han pogut guardar les dades");
+					}else if(buffer.tipus == DATA_ACK){
+						print_debug("S'han acceptat les dades");
+						sprintf(filename,"%s.data",(char *) buffer.id);
+						logfile = fopen(filename,"a");
+						timet = time(NULL);
+						tlocal = ctime(&timet);
+						tlocal[strlen(tlocal) - 1] = '\0';
+						fflush(stdout);
+						sprintf(res_str,"%s;GET_DATA;%s;%s\n",tlocal,buffer.element,buffer.valor);
+						fputs(res_str,logfile);
+						fclose(logfile);
+						close(tcp_sock);
+						return 0;
+					}else{
+						print_debug("Paquet no esperat");
+					}
+				}else{
+					print_debug("El client no ha contestat");
+				}
+			}
+		}
+	}
+	close(tcp_sock);	
+	return -1;
 }
 
 void quit(){
@@ -775,8 +895,18 @@ int main(int argc,char *argv[]){
 		}
 		if (strcmp(params[0],"set") == 0){
 			operation_result = set(params[1],params[2],params[3]);
+			if(operation_result >= 0){
+				print_debug("Operació exitosa");
+			}else{
+				print_debug("Operació fallida");
+			}
 		}else if(strcmp(params[0], "get") == 0){
 			operation_result = get(params[1],params[2]);
+			if(operation_result >= 0){
+				print_debug("Operació exitosa");
+			}else{
+				print_debug("Operació fallida");
+			}
 		}else if(strcmp(params[0],"list") == 0){
 			list();
 		}else if(strcmp(params[0],"quit") == 0){

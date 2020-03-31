@@ -54,6 +54,7 @@ struct client{
     char id[13];
     char dispositius[16][8];
     struct sockaddr_in addr_UDP;
+    struct sockaddr_in *addr_TCP;
     int random;
     int TCP_port;
     int new_udp_port;
