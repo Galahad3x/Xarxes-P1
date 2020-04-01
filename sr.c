@@ -236,7 +236,7 @@ void set_TCP_port(char id[], char port[]){
 	}
 }
 
-void set_TCP_addr(char id[], struct sockaddr_in addr[]){
+void set_TCP_addr(char id[], struct sockaddr_in addr){
 	int i = 0;
 	for(i = 0;i < MAX_CLIENTS;i++){
 		if(strcmp(clients[i].id,id) == 0){
@@ -314,7 +314,9 @@ void *client_manager(void *argvs){
 			new_UDP_port = generate_UDP_port();
 			serv_new_addrs.sin_port = htons(new_UDP_port);
 		}
-		print_debug("Nou socket bindejat correctament");
+		if (debug == 1){
+			print_debug("Nou socket bindejat correctament");
+		}
 		
 		sprintf((char *) str_new_UDP_port,"%i",new_UDP_port);
 		str_new_UDP_port[4] = '\0';
@@ -353,7 +355,7 @@ void *client_manager(void *argvs){
 						cl_tcp.sin_port = htons(atoi(ptr));
 						cl_tcp.sin_addr.s_addr = cl_addrs.sin_addr.s_addr;
 		
-						set_TCP_addr(buffer2.id,(struct sockaddr_in *) &cl_tcp);
+						set_TCP_addr(buffer2.id,cl_tcp);
 		
 						ptr = strtok(NULL, ",");
 						
@@ -642,6 +644,7 @@ int set(char clid[],char elem[],char val[]){
 	struct PDU_TCP SEND_pack,buffer;
 	int tcp_sock;
 	int i,retl;
+	char str_rand[9];
 	struct timeval tv;
 	fd_set selectset;
 	FILE *logfile;
@@ -657,8 +660,9 @@ int set(char clid[],char elem[],char val[]){
 		i = 0;
 		for(i = 0; i < MAX_CLIENTS;i++){
 			if(strcmp(clients[i].id,clid) == 0){
-				SEND_pack = create_tcp_packet(SET_DATA,server_id,(char *) &clients[i].random,elem,val,clid);
-				connect(tcp_sock,(struct sockaddr *) clients[i].addr_TCP,sizeof(struct sockaddr_in));
+				sprintf(str_rand,"%i",clients[i].random);
+				SEND_pack = create_tcp_packet(SET_DATA,server_id,str_rand,elem,val,clid);
+				connect(tcp_sock,(struct sockaddr *) &clients[i].addr_TCP,sizeof(struct sockaddr_in));
 				send(tcp_sock,(struct PDU_TCP *) &SEND_pack,sizeof(struct PDU_TCP),0);
 				FD_ZERO(&selectset);
 				FD_SET(tcp_sock,&selectset);
@@ -671,6 +675,7 @@ int set(char clid[],char elem[],char val[]){
 						print_debug("S'han rebutjat les dades");
 					}else if(buffer.tipus == DATA_NACK){
 						print_debug("No s'han pogut guardar les dades");
+						print_debug(buffer.info);
 					}else if(buffer.tipus == DATA_ACK){
 						print_debug("S'han acceptat les dades");
 						sprintf(filename,"%s.data",(char *) buffer.id);
@@ -701,6 +706,7 @@ int get(char clid[],char elem[]){
 	struct PDU_TCP SEND_pack,buffer;
 	int tcp_sock;
 	int i,retl;
+	char str_rand[9];
 	struct timeval tv;
 	fd_set selectset;
 	FILE *logfile;
@@ -716,7 +722,8 @@ int get(char clid[],char elem[]){
 		i = 0;
 		for(i = 0; i < MAX_CLIENTS;i++){
 			if(strcmp(clients[i].id,clid) == 0){
-				SEND_pack = create_tcp_packet(GET_DATA,server_id,(char *) &clients[i].random,elem,"",clid);
+				sprintf(str_rand,"%i",clients[i].random);
+				SEND_pack = create_tcp_packet(GET_DATA,server_id,str_rand,elem,"",clid);
 				connect(tcp_sock,(struct sockaddr *) &clients[i].addr_TCP,sizeof(struct sockaddr_in));
 				send(tcp_sock,(struct PDU_TCP *) &SEND_pack,sizeof(struct PDU_TCP),0);
 				FD_ZERO(&selectset);
