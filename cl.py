@@ -492,8 +492,7 @@ def create_data_rej(element):
                        "NONE".encode(), "Error d'identificació".encode())
 
 
-def waiting_for_server(data_socket):
-    new_socket, addr = data_socket.accept()
+def waiting_for_server(new_socket,addr):
     if debug:
         print(dt() + "S'ha rebut una connexió del servidor")
     packet_from_server = new_socket.recv(struct.calcsize("B13s9s8s16s80s"))
@@ -528,10 +527,10 @@ def waiting_for_server(data_socket):
         os.kill(os.getpid(), signal.SIGUSR1)
 
 
-def start_waiting_thread(data_socket):
+def start_waiting_thread(data_socket, addrs):
     if debug:
         print(dt() + "Creant thread per a esperar una connexió amb el servidor")
-    receive_data_thread = threading.Thread(target=waiting_for_server, args=[data_socket], daemon=True)
+    receive_data_thread = threading.Thread(target=waiting_for_server, args=[data_socket,addrs], daemon=True)
     receive_data_thread.start()
     return receive_data_thread
 
@@ -546,8 +545,8 @@ def prepare_server_connection():
         raise SystemExit
     receive_data_socket.listen(5)
     while True:
-        thread = start_waiting_thread(receive_data_socket)
-        thread.join()
+        new_socket, addr = receive_data_socket.accept()
+        thread = start_waiting_thread(new_socket, addr)
 
 
 if debug:
