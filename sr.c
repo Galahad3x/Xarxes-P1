@@ -763,6 +763,12 @@ int get(char clid[],char elem[]){
 	return -1;
 }
 
+void ajuda(){
+	printf("*************** AJUDA **************\n");
+	printf("Comanda \t\tÚs \t\t Funció\n");
+	/* etc etc */
+}
+
 void quit(){
     register_handler_alive = 0;
     alive_controller_alive = 0;
@@ -926,6 +932,8 @@ int main(int argc,char *argv[]){
 				debug = 0;
 				print_debug("Mode debug desactivat");
 			}
+		}else if(strcmp(params[0],"?") == 0){
+			ajuda();
 		}else{
 			print_debug("Comanda errònea");
 		}
