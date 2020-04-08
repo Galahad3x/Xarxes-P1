@@ -765,8 +765,14 @@ int get(char clid[],char elem[]){
 
 void ajuda(){
 	printf("*************** AJUDA **************\n");
-	printf("Comanda \t\tÚs \t\t Funció\n");
-	/* etc etc */
+	printf("Comanda \t\tÚs \t\tFunció\n");
+	printf("set \t\tset <id_client> <dispositiu> <valor>\tEnvia el valor entrat al dispositiu del client\n");
+	printf("get \t\tget <id_client> <dispositiu>\tRep el valor del dispositiu del client\n");
+	printf("list \t\tlist \tMostra els clients acceptats amb els seus dispositius\n");
+	printf("quit \t\tquit \tTanca el servidor\n");
+	printf("debug \t\tdebug \tActiva o desactiva el mode debug\n");
+	printf("ajuda \t\t? \tMostra aquesta ajuda\n");
+	printf("*************************************\n");
 }
 
 void quit(){
