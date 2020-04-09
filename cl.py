@@ -262,6 +262,7 @@ data, rand = register_waiting()
 
 # FINAL FASE DE REGISTRE
 should_clock_alive = True
+sent_alives = 0
 
 
 def alive_thread_communication():
@@ -304,7 +305,7 @@ def alive_thread_communication():
             data_from_server = decompose(packet_from_server)
 
             if data_from_server["Tipus"] != 16 or data_from_server["Dades"] != client["Id"] or rand != data_from_server[
-                "Random"]:
+                    "Random"]:
                 if debug:
                     print(dt() + "Hi ha hagut algun error amb el paquet. Reiniciant")
                 os.kill(os.getpid(), signal.SIGUSR1)
@@ -431,7 +432,7 @@ def send(param_name):
             print(data_from_server)
 
 
-def help():
+def fhelp():
     print("**********AJUDA COMANDES**********")
     print("Comanda  Ús \t\t\tUtilitat")
     print("")
@@ -476,8 +477,8 @@ def create_set_data_ack(element):
                        client["Params"][element].encode(), dt2().encode())
 
 
-def create_set_data_nack(element, type):
-    if type == 0:
+def create_set_data_nack(element, typeof):
+    if typeof == 0:
         return struct.pack("B13s9s8s16s80s", packtypes["DATA_NACK"], client["Id"].encode(), rand.encode(),
                            element.encode(),
                            "NONE".encode(), "Hi ha hagut un error al fer el set".encode())
@@ -492,7 +493,7 @@ def create_data_rej(element):
                        "NONE".encode(), "Error d'identificació".encode())
 
 
-def waiting_for_server(new_socket,addr):
+def waiting_for_server(new_socket):
     if debug:
         print(dt() + "S'ha rebut una connexió del servidor")
     packet_from_server = new_socket.recv(struct.calcsize("B13s9s8s16s80s"))
@@ -527,10 +528,10 @@ def waiting_for_server(new_socket,addr):
         os.kill(os.getpid(), signal.SIGUSR1)
 
 
-def start_waiting_thread(data_socket, addrs):
+def start_waiting_thread(data_socket):
     if debug:
         print(dt() + "Creant thread per a esperar una connexió amb el servidor")
-    receive_data_thread = threading.Thread(target=waiting_for_server, args=[data_socket,addrs], daemon=True)
+    receive_data_thread = threading.Thread(target=waiting_for_server, args=[data_socket], daemon=True)
     receive_data_thread.start()
     return receive_data_thread
 
@@ -546,7 +547,7 @@ def prepare_server_connection():
     receive_data_socket.listen(5)
     while True:
         new_socket, addr = receive_data_socket.accept()
-        thread = start_waiting_thread(new_socket, addr)
+        start_waiting_thread(new_socket)
 
 
 if debug:
@@ -568,7 +569,7 @@ while True:
         elif command.split()[0] == "send":
             send(command.split()[1])
         elif command.split()[0] == "?":
-            help()
+            fhelp()
         elif command.split()[0] == "debug":
             if debug:
                 debug = False
