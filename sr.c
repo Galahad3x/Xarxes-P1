@@ -414,7 +414,7 @@ void *client_manager(void *argvs){
 			sendto(server_UDP_socket,(struct PDU_UDP *) &ALIVE_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
 		}else if (recved == -1){
 			ALIVE_packet = create_udp_packet(ALIVE_REJ,server_id,buffer.aleatori,buffer.id);
-			update_client(buffer.id,SEND_ALIVE);
+			update_client(buffer.id,DISCONNECTED);
 			sendto(server_UDP_socket,(struct PDU_UDP *) &ALIVE_packet,84,MSG_CONFIRM,(struct sockaddr *) &cl_addrs, len);
 		}
 	}
