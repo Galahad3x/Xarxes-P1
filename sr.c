@@ -726,39 +726,41 @@ int get(char clid[],char elem[]){
 		i = 0;
 		for(i = 0; i < MAX_CLIENTS;i++){
 			if(strcmp(clients[i].id,clid) == 0){
-				sprintf(str_rand,"%i",clients[i].random);
-				SEND_pack = create_tcp_packet(GET_DATA,server_id,str_rand,elem,"",clid);
-				connect(tcp_sock,(struct sockaddr *) &clients[i].addr_TCP,sizeof(struct sockaddr_in));
-				send(tcp_sock,(struct PDU_TCP *) &SEND_pack,sizeof(struct PDU_TCP),0);
-				FD_ZERO(&selectset);
-				FD_SET(tcp_sock,&selectset);
-				tv.tv_sec = 3;
-				tv.tv_usec = 0;
-				retl = select(tcp_sock+1,&selectset,NULL,NULL,(struct timeval *) &tv);
-				if(retl){
-					recv(tcp_sock,&buffer,sizeof(struct PDU_TCP),0);
-					if(buffer.tipus == DATA_REJ){
-						print_debug("S'han rebutjat les dades");
-					}else if(buffer.tipus == DATA_NACK){
-						print_debug("No s'han pogut guardar les dades");
-					}else if(buffer.tipus == DATA_ACK){
-						print_debug("S'han acceptat les dades");
-						sprintf(filename,"%s.data",(char *) buffer.id);
-						logfile = fopen(filename,"a");
-						timet = time(NULL);
-						tlocal = ctime(&timet);
-						tlocal[strlen(tlocal) - 1] = '\0';
-						fflush(stdout);
-						sprintf(res_str,"%s;GET_DATA;%s;%s\n",tlocal,buffer.element,buffer.valor);
-						fputs(res_str,logfile);
-						fclose(logfile);
-						close(tcp_sock);
-						return 0;
+				if(clients[i].status == SEND_ALIVE){
+					sprintf(str_rand,"%i",clients[i].random);
+					SEND_pack = create_tcp_packet(GET_DATA,server_id,str_rand,elem,"",clid);
+					connect(tcp_sock,(struct sockaddr *) &clients[i].addr_TCP,sizeof(struct sockaddr_in));
+					send(tcp_sock,(struct PDU_TCP *) &SEND_pack,sizeof(struct PDU_TCP),0);
+					FD_ZERO(&selectset);
+					FD_SET(tcp_sock,&selectset);
+					tv.tv_sec = 3;
+					tv.tv_usec = 0;
+					retl = select(tcp_sock+1,&selectset,NULL,NULL,(struct timeval *) &tv);
+					if(retl){
+						recv(tcp_sock,&buffer,sizeof(struct PDU_TCP),0);
+						if(buffer.tipus == DATA_REJ){
+							print_debug("S'han rebutjat les dades");
+						}else if(buffer.tipus == DATA_NACK){
+							print_debug("No s'han pogut guardar les dades");
+						}else if(buffer.tipus == DATA_ACK){
+							print_debug("S'han acceptat les dades");
+							sprintf(filename,"%s.data",(char *) buffer.id);
+							logfile = fopen(filename,"a");
+							timet = time(NULL);
+							tlocal = ctime(&timet);
+							tlocal[strlen(tlocal) - 1] = '\0';
+							fflush(stdout);
+							sprintf(res_str,"%s;GET_DATA;%s;%s\n",tlocal,buffer.element,buffer.valor);
+							fputs(res_str,logfile);
+							fclose(logfile);
+							close(tcp_sock);
+							return 0;
+						}else{
+							print_debug("Paquet no esperat");
+						}
 					}else{
-						print_debug("Paquet no esperat");
+						print_debug("El client no ha contestat");
 					}
-				}else{
-					print_debug("El client no ha contestat");
 				}
 			}
 		}
