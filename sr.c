@@ -903,6 +903,7 @@ int main(int argc,char *argv[]){
     signal(SIGINT,handle_cntrc);
 	fflush(stdout);
     while(0 < 1){
+		printf("Introdueix una comanda: ");
 		i = 0;
 		while (i < 4){
 			strcpy(params[i],"");
