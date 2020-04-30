@@ -792,8 +792,9 @@ int main(int argc,char *argv[]){
     FILE *cfg_file,*dat_file;
     int i,j,operation_result;
     char filename[64] = "",datab_name[64] = "";
-    char server_UDP_port_read[16],server_UDP_port_arr[4];
-    char server_TCP_port_read[16],server_TCP_port_arr[4];
+    char server_UDP_port_read[32],server_UDP_port_arr[6];
+    char server_TCP_port_read[32],server_TCP_port_arr[6];
+    char temp_client[32] = "\0";
     char buff_comm[255];
     char params[4][255];
     char *ptr;
@@ -868,15 +869,18 @@ int main(int argc,char *argv[]){
     dat_file = fopen(datab_name,"r");
     i = 0;
     while(i < MAX_CLIENTS){
-        fgets(clients[i].id,32,dat_file);
-        clients[i].id[12] = '\0';
-        clients[i].status = DISCONNECTED;
-        j = 0;
-        for (j = 0; j < MAX_DISPS;j++){
-			strcpy(clients[i].dispositius[j],"\0");
+        if(fgets(temp_client,32,dat_file)!= NULL){
+			temp_client[12] = '\0';
+			strcpy(clients[i].id,temp_client);
+			clients[i].id[12] = '\0';
+			clients[i].status = DISCONNECTED;
+			j = 0;
+			for (j = 0; j < MAX_DISPS;j++){
+				strcpy(clients[i].dispositius[j],"\0");
+			}
+			clients[i].alive_recved = 0;
+			clients[i].alives_no_answer = 0;
 		}
-        clients[i].alive_recved = 0;
-        clients[i].alives_no_answer = 0;
         i++;
     }
     if(fclose(dat_file) != 0){
