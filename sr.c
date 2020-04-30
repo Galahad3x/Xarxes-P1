@@ -869,18 +869,18 @@ int main(int argc,char *argv[]){
     dat_file = fopen(datab_name,"r");
     i = 0;
     while(i < MAX_CLIENTS){
-        if(fgets(temp_client,32,dat_file)!= NULL){
-			temp_client[12] = '\0';
-			strcpy(clients[i].id,temp_client);
-			clients[i].id[12] = '\0';
-			clients[i].status = DISCONNECTED;
-			j = 0;
-			for (j = 0; j < MAX_DISPS;j++){
-				strcpy(clients[i].dispositius[j],"\0");
-			}
-			clients[i].alive_recved = 0;
-			clients[i].alives_no_answer = 0;
+        if(fgets(temp_client,32,dat_file) != NULL){
+		temp_client[12] = '\0';
+		strcpy(clients[i].id,temp_client);
+		clients[i].id[12] = '\0';
+		clients[i].status = DISCONNECTED;
+		j = 0;
+		for (j = 0; j < MAX_DISPS;j++){
+			strcpy(clients[i].dispositius[j],"\0");
 		}
+		clients[i].alive_recved = 0;
+		clients[i].alives_no_answer = 0;
+	}
         i++;
     }
     if(fclose(dat_file) != 0){

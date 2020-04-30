@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.7
+#!/usr/bin/python3
 
 import os
 import select
@@ -407,7 +407,7 @@ def decompose_TCP(packet_recv):
     else:
         print(dt() + "El paquet ha estat acceptat (s'ha rebut DATA_ACK)")
 
-    decomposed = {"Tipus": tup[0], "Id": tup[1].decode(), "Random": tup[2].decode(),
+    decomposed = {"Tipus": tup[0], "Id": tup[1].decode(errors="ignore"), "Random": tup[2].decode(errors="ignore"),
                   "Element": tup[3].decode(errors="ignore"), "Valor": tup[4].decode(errors="ignore"),
                   "Info": new_info}
     return decomposed
