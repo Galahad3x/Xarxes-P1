@@ -850,7 +850,7 @@ int main(int argc,char *argv[]){
             j++;
         }
     }
-	server_UCP_port_arr[j] = '\0';
+	server_UDP_port_arr[j] = '\0';
     server_UDP_port = atoi(server_UDP_port_arr);
     fgets(server_TCP_port_read,32,cfg_file);
     j = 0;
